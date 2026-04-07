@@ -12,9 +12,9 @@ The project consists of three containerized services orchestrated with **Docker 
 
 | Service | Image base | Role |
 |---|---|---|
-| **nginx** | Alpine 3.19 | Reverse proxy, TLS 1.3 termination, static asset serving |
-| **wordpress** | Alpine 3.19 | PHP-FPM application server running WordPress |
-| **mariadb** | mariadb:11 | Relational database backend |
+| **nginx** | Alpine 3.22.3 | Reverse proxy, TLS 1.3 termination, static asset serving |
+| **wordpress** | Alpine 3.22.3 | PHP-FPM application server running WordPress |
+| **mariadb** | Alpine 3.22.3 | Relational database backend |
 
 The site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**.
 
@@ -51,11 +51,8 @@ This project uses **Docker Secrets** for all credentials (database root password
 | DNS | Docker provides automatic DNS resolution by service name | No container-level DNS; must use `localhost` or IPs |
 | Security | Strong: inter-service traffic is invisible to the host | Weak: no network boundary between container and host |
 
-This project uses **two custom bridge networks**:
-- `frontend` — nginx ↔ wordpress only
-- `backend` — wordpress ↔ mariadb only
-
-MariaDB is never directly reachable from nginx, enforcing the principle of least privilege at the network layer.
+This project uses **one custom bridge networks**:
+- `inception` — nginx ↔ wordpress ↔ mariadb
 
 #### Docker Volumes vs Bind Mounts
 
@@ -79,13 +76,13 @@ This project uses **named Docker Volumes**:
 
 - Docker Engine ≥ 24
 - Docker Compose plugin (`docker compose`)
-- `make` (optional, if a Makefile is provided)
+- `make`
 
 ### 1. Clone the repository
 
 ```bash
 git clone https://github.com/DavidLee18/42_inception.git
-cd inception
+cd 42_inception
 ```
 
 ### 2. Create the secrets
@@ -109,7 +106,7 @@ echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
 ### 4. Build and start
 
 ```bash
-docker compose up -d --build
+make all
 ```
 
 ### 5. Access the site
@@ -124,8 +121,7 @@ The WordPress installation wizard will guide you through the initial setup.
 # Stop containers (preserves volumes)
 docker compose down
 
-# Stop and remove all volumes (destructive)
-docker compose down -v
+make clean
 ```
 
 ### Project structure
