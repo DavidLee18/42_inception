@@ -1,10 +1,21 @@
 FROM alpine:3.22.3
 
-RUN apk update && apk add --no-cache mariadb mariadb-client
-RUN mariadb-install-db --user=mysql --datadir=/var/lib/mysql
+RUN apk add --no-cache \
+    mariadb \
+    mariadb-client
 
-VOLUME ["/var/lib/mysql"]
+# Create the data directory and set ownership
+RUN mkdir -p /var/lib/mysql /run/mysqld \
+    && chown -R mysql:mysql /var/lib/mysql /run/mysqld
+
+# Copy custom config
+COPY my.cnf /etc/my.cnf.d/custom.cnf
+
+# Copy entrypoint that initialises the DB and reads Docker secrets
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 3306
 
-ENTRYPOINT ["mariadbd", "--user=mysql", "--datadir=/var/lib/mysql"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["mysqld", "--user=mysql"]
