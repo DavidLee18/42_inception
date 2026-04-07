@@ -24,6 +24,7 @@ RUN apk add --no-cache \
 RUN ln -sf /usr/bin/php83 /usr/bin/php
 
 ARG WP_VERSION=6.5.2
+RUN mkdir -p /var/www
 RUN curl -fsSL "https://wordpress.org/wordpress-${WP_VERSION}.tar.gz" \
     | tar -xz -C /var/www/ \
     && mv /var/www/wordpress /var/www/html \
