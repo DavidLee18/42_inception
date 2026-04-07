@@ -1,0 +1,73 @@
+name: inception
+
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password.txt
+  db_name:
+    file: ./secrets/db_name.txt
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
+
+services:
+  mariadb:
+    build:
+      context: ./mariadb
+    restart: unless-stopped
+    secrets:
+      - db_root_password
+      - db_name
+      - db_user
+      - db_password
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MYSQL_DATABASE_FILE:      /run/secrets/db_name
+      MYSQL_USER_FILE:          /run/secrets/db_user
+      MYSQL_PASSWORD_FILE:      /run/secrets/db_password
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - inception
+
+  wordpress:
+    build:
+      context: ./wordpress
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+    environment:
+      WORDPRESS_DB_HOST: mariadb:3306
+      # entrypoint.sh reads the secret files at runtime
+      WORDPRESS_DB_NAME_FILE:     /run/secrets/db_name
+      WORDPRESS_DB_USER_FILE:     /run/secrets/db_user
+      WORDPRESS_DB_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - wp_data:/var/www/html
+    networks:
+      - inception
+
+  nginx:
+    build:
+      context: ./nginx
+    restart: unless-stopped
+    depends_on:
+      - wordpress
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - wp_data:/var/www/html:ro
+    networks:
+      - inception  
+
+volumes:
+  db_data:
+  wp_data:
+
+networks:
+  inception:
