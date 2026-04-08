@@ -8,15 +8,19 @@
 
 Inception is a system administration project from the 42 curriculum. Its goal is to broaden knowledge of system administration by using **Docker** to set up a small but complete infrastructure composed of several services, all running inside a personal virtual machine.
 
-The project consists of three containerized services orchestrated with **Docker Compose**:
+The project consists of seven containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.3**:
 
-| Service | Image base | Role |
-|---|---|---|
-| **nginx** | Alpine 3.22.3 | Reverse proxy, TLS 1.3 termination, static asset serving |
-| **wordpress** | Alpine 3.22.3 | PHP-FPM application server running WordPress |
-| **mariadb** | Alpine 3.22.3 | Relational database backend |
+| Service | Role |
+|---|---|
+| **nginx** | Reverse proxy, TLS 1.3 termination, static asset serving for WordPress |
+| **wordpress** | PHP-FPM application server running WordPress |
+| **mariadb** | Relational database backend for WordPress |
+| **redis** | In-memory object cache for WordPress |
+| **ftp** | vsftpd FTP server giving direct access to the WordPress web root |
+| **static** | Standalone static resume/portfolio site built with a barbell-style pipeline |
+| **adminer** | Lightweight web-based database management UI |
 
-The site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**.
+The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All seven services share a single custom bridge network called `limbo`.
 
 ### Main Design Choices
 
@@ -40,7 +44,7 @@ This project uses Docker because we need lightweight, reproducible, and composab
 | Risk surface | Any process in the container can read them; leaked in logs | Only accessible to services explicitly granted them |
 | Suitability | Non-sensitive config (hostnames, ports) | Passwords, tokens, private keys |
 
-This project uses **Docker Secrets** for all credentials (database root password, database name, user, and password). MariaDB reads them natively via `_FILE` environment variables. WordPress reads them via a custom `entrypoint.sh` that writes `wp-config.php` at runtime, so raw passwords never appear in environment variables.
+This project uses **Docker Secrets** for all credentials: database passwords, WordPress admin and user accounts, Redis password, and FTP credentials. Each service's `entrypoint.sh` reads the secret files at runtime, so raw credentials never appear as environment variable values anywhere in the stack.
 
 #### Docker Network vs Host Network
 
@@ -51,8 +55,7 @@ This project uses **Docker Secrets** for all credentials (database root password
 | DNS | Docker provides automatic DNS resolution by service name | No container-level DNS; must use `localhost` or IPs |
 | Security | Strong: inter-service traffic is invisible to the host | Weak: no network boundary between container and host |
 
-This project uses **one custom bridge networks**:
-- `inception` — nginx ↔ wordpress ↔ mariadb
+This project uses a single custom bridge network named **`limbo`**. All seven containers are attached to it, which gives them automatic DNS resolution by service name (e.g. `wordpress` can reach `mariadb` simply by that name) while keeping all inter-service traffic invisible to the host. Only the ports explicitly declared under `ports:` in `docker-compose.yml` are reachable from outside.
 
 #### Docker Volumes vs Bind Mounts
 
@@ -66,7 +69,8 @@ This project uses **one custom bridge networks**:
 
 This project uses **named Docker Volumes**:
 - `db_data` — MariaDB data directory (`/var/lib/mysql`)
-- `wp_data` — WordPress web root (`/var/www/html`), shared read-write by WordPress and read-only by nginx so nginx can serve static assets directly without hitting PHP-FPM.
+- `wp_data` — WordPress web root (`/var/www/html`), mounted read-write by WordPress and the FTP server, and read-only by nginx so nginx can serve static assets directly without hitting PHP-FPM
+- `redis_data` — Redis RDB snapshot directory (`/data`)
 
 ---
 
@@ -89,10 +93,19 @@ cd 42_inception
 
 ```bash
 mkdir -p secrets
-echo "strongrootpassword" > secrets/db_root_password.txt
-echo "wordpress"          > secrets/db_name.txt
-echo "wpuser"             > secrets/db_user.txt
-echo "strongwppassword"   > secrets/db_password.txt
+echo "strongrootpassword"   > secrets/db_root_password.txt
+echo "wordpress"            > secrets/db_name.txt
+echo "wpuser"               > secrets/db_user.txt
+echo "strongwppassword"     > secrets/db_password.txt
+echo "strongredispassword"  > secrets/redis_password.txt
+echo "jaehylee"             > secrets/wp_admin_user.txt
+echo "strongadminpassword"  > secrets/wp_admin_password.txt
+echo "jaehylee@42seoul.kr"  > secrets/wp_admin_email.txt
+echo "subscriber1"          > secrets/wp_user.txt
+echo "stronguserpassword"   > secrets/wp_user_password.txt
+echo "user@42seoul.kr"      > secrets/wp_user_email.txt
+echo "ftpuser"              > secrets/ftp_user.txt
+echo "strongftppassword"    > secrets/ftp_password.txt
 ```
 
 > **Never commit the `secrets/` directory.** It is listed in `.gitignore`.
@@ -106,22 +119,29 @@ echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
 ### 4. Build and start
 
 ```bash
-make all
+make
 ```
 
-### 5. Access the site
+### 5. Access the services
 
-Open `https://jaehylee.42.fr` in your browser. Accept the self-signed certificate warning on first visit.
+| Service | URL |
+|---|---|
+| WordPress | `https://jaehylee.42.fr` |
+| WordPress admin | `https://jaehylee.42.fr/wp-admin` |
+| Static site | `http://jaehylee.42.fr:8080` |
+| Adminer | `http://jaehylee.42.fr:8081` |
+| FTP | `ftp://jaehylee.42.fr:21` |
 
-The WordPress installation wizard will guide you through the initial setup.
+Accept the self-signed certificate warning on first visit to the WordPress site. WordPress is fully installed automatically — no browser wizard required.
 
 ### 6. Stop and clean up
 
 ```bash
 # Stop containers (preserves volumes)
-docker compose down
+make down
 
-make clean
+# Stop containers and erase all data
+make fclean
 ```
 
 ### Project structure
@@ -129,18 +149,56 @@ make clean
 ```
 .
 ├── docker-compose.yml
-├── secrets/                   # Secret files (not committed)
+├── Makefile
+├── secrets/                    # Not committed to Git
 │   ├── db_root_password.txt
 │   ├── db_name.txt
 │   ├── db_user.txt
-│   └── db_password.txt
+│   ├── db_password.txt
+│   ├── redis_password.txt
+│   ├── wp_admin_user.txt
+│   ├── wp_admin_password.txt
+│   ├── wp_admin_email.txt
+│   ├── wp_user.txt
+│   ├── wp_user_password.txt
+│   ├── wp_user_email.txt
+│   ├── ftp_user.txt
+│   └── ftp_password.txt
 ├── nginx/
 │   ├── Dockerfile
 │   └── nginx.conf
-└── wordpress/
+├── mariadb/
+│   ├── Dockerfile
+│   ├── my.cnf
+│   └── entrypoint.sh
+├── wordpress/
+│   ├── Dockerfile
+│   ├── php-fpm.conf
+│   └── entrypoint.sh
+├── redis/
+│   ├── Dockerfile
+│   ├── redis.conf
+│   └── entrypoint.sh
+├── ftp/
+│   ├── Dockerfile
+│   ├── vsftpd.conf
+│   └── entrypoint.sh
+├── static/
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── build.sh
+│   └── site/
+│       ├── template.html
+│       ├── index.md
+│       ├── style.css
+│       ├── name.bar
+│       ├── title.bar
+│       ├── description.bar
+│       └── pubDate.bar
+└── adminer/
     ├── Dockerfile
-    ├── php-fpm.conf
-    └── entrypoint.sh
+    ├── nginx.conf
+    └── php-fpm.conf
 ```
 
 ---
@@ -156,7 +214,12 @@ make clean
 - [nginx `fastcgi_params` and PHP-FPM](https://nginx.org/en/docs/http/ngx_http_fastcgi_module.html)
 - [Alpine Linux package index](https://pkgs.alpinelinux.org/packages)
 - [WordPress `wp-config.php` documentation](https://developer.wordpress.org/apis/wp-config-php/)
-- [MariaDB Docker Hub — environment variables](https://hub.docker.com/_/mariadb)
+- [WP-CLI documentation](https://wp-cli.org/)
+- [MariaDB documentation](https://mariadb.com/kb/en/documentation/)
+- [Redis configuration documentation](https://redis.io/docs/management/config/)
+- [vsftpd manual](https://security.appspot.com/vsftpd/vsftpd_conf.html)
+- [Adminer documentation](https://www.adminer.org/)
+- [barbell — BQN template engine](https://github.com/jhvst/barbell)
 - [OpenSSL TLS 1.3 overview](https://www.openssl.org/blog/blog/2018/09/11/release111/)
 - [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
 
@@ -168,15 +231,19 @@ make clean
 - [PHP-FPM configuration guide](https://www.php.net/manual/en/install.fpm.configuration.php)
 - [TLS 1.3 — What's New](https://www.ietf.org/blog/tls13/)
 - [HSTS — HTTP Strict Transport Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)
+- [Redis eviction policies](https://redis.io/docs/reference/eviction/)
+- [vsftpd and passive mode FTP](https://wiki.alpinelinux.org/wiki/FTP)
 
 ### AI Usage
 
 **Claude (Anthropic)** was used as an assistant throughout this project for the following tasks:
 
-- **Dockerfile generation** — producing Alpine-based Dockerfiles for nginx (with TLS 1.3) and WordPress (with PHP-FPM), including the correct `apk` package names for PHP 8.3 extensions.
-- **docker-compose.yml structure** — defining multi-service orchestration, network segmentation (`frontend`/`backend`), named volumes, and secret injection patterns.
-- **Docker Secrets integration** — designing the `entrypoint.sh` script that reads secret files at runtime and writes `wp-config.php`, avoiding credential exposure in environment variables.
-- **nginx configuration** — configuring TLS 1.3-only, HTTP→HTTPS redirect, FastCGI proxying to PHP-FPM, static asset caching, and security headers.
-- **README writing** — drafting and structuring this document, including the comparison tables for VM vs Docker, Secrets vs Env Vars, Docker Network vs Host Network, and Volumes vs Bind Mounts.
+- **Dockerfile generation** — producing Alpine 3.22.3-based Dockerfiles for all seven services, including the correct `apk` package names, multi-stage builds (static site), and per-service entrypoint scripts.
+- **docker-compose.yml structure** — defining multi-service orchestration, the unified `limbo` bridge network, named volumes, and secret injection patterns across all services.
+- **Docker Secrets integration** — designing consistent `entrypoint.sh` scripts across mariadb, wordpress, redis, and ftp that read secret files at runtime, so raw credentials never appear as environment variable values.
+- **nginx configuration** — TLS 1.3-only enforcement, HTTP→HTTPS redirect, FastCGI proxying to PHP-FPM, static asset caching, and security headers.
+- **WordPress automation** — using WP-CLI in the WordPress entrypoint to fully install WordPress, create the admin and subscriber accounts, and enable the Redis object cache plugin without any browser interaction.
+- **Static site pipeline** — replicating the barbell `|variable|` substitution mechanic with `sed` and `pandoc` inside a multi-stage Alpine build.
+- **Documentation** — drafting and structuring this README, USER_DOC.md, and DEV_DOC.md.
 
 AI was used as a productivity and reference tool. All generated output was reviewed, understood, and validated before being included in the project.
