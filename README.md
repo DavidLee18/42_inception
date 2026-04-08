@@ -8,7 +8,7 @@
 
 Inception is a system administration project from the 42 curriculum. Its goal is to broaden knowledge of system administration by using **Docker** to set up a small but complete infrastructure composed of several services, all running inside a personal virtual machine.
 
-The project consists of seven containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.3**:
+The project consists of eight containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.3**:
 
 | Service | Role |
 |---|---|
@@ -16,11 +16,12 @@ The project consists of seven containerised services orchestrated with **Docker 
 | **wordpress** | PHP-FPM application server running WordPress |
 | **mariadb** | Relational database backend for WordPress |
 | **redis** | In-memory object cache for WordPress |
-| **ftp** | vsftpd FTP server giving direct access to the WordPress web root |
+| **ftp** | vsftpd FTP server giving direct file access to the WordPress web root |
 | **static** | Standalone static resume/portfolio site built with a barbell-style pipeline |
 | **adminer** | Lightweight web-based database management UI |
+| **monitoring** | Prometheus + Grafana in a single container, monitoring all services via the Docker daemon metrics endpoint |
 
-The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All seven services share a single custom bridge network called `limbo`.
+The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All eight services share a single custom bridge network called `limbo`.
 
 ### Main Design Choices
 
@@ -55,7 +56,7 @@ This project uses **Docker Secrets** for all credentials: database passwords, Wo
 | DNS | Docker provides automatic DNS resolution by service name | No container-level DNS; must use `localhost` or IPs |
 | Security | Strong: inter-service traffic is invisible to the host | Weak: no network boundary between container and host |
 
-This project uses a single custom bridge network named **`limbo`**. All seven containers are attached to it, which gives them automatic DNS resolution by service name (e.g. `wordpress` can reach `mariadb` simply by that name) while keeping all inter-service traffic invisible to the host. Only the ports explicitly declared under `ports:` in `docker-compose.yml` are reachable from outside.
+This project uses a single custom bridge network named **`limbo`**. All eight containers are attached to it, which gives them automatic DNS resolution by service name while keeping all inter-service traffic invisible to the host. Only the ports explicitly declared under `ports:` in `docker-compose.yml` are reachable from outside. The `monitoring` container additionally uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint on the host machine without switching to host networking mode.
 
 #### Docker Volumes vs Bind Mounts
 
@@ -69,8 +70,10 @@ This project uses a single custom bridge network named **`limbo`**. All seven co
 
 This project uses **named Docker Volumes**:
 - `db_data` — MariaDB data directory (`/var/lib/mysql`)
-- `wp_data` — WordPress web root (`/var/www/html`), mounted read-write by WordPress and the FTP server, and read-only by nginx so nginx can serve static assets directly without hitting PHP-FPM
+- `wp_data` — WordPress web root (`/var/www/html`), shared read-write by WordPress and FTP, read-only by nginx
 - `redis_data` — Redis RDB snapshot directory (`/data`)
+- `prometheus_data` — Prometheus time-series storage (`/var/lib/prometheus`), retaining 15 days of metrics
+- `grafana_data` — Grafana state: manually created dashboards, users, and settings (`/var/lib/grafana`)
 
 ---
 
@@ -89,7 +92,22 @@ git clone https://github.com/DavidLee18/42_inception.git
 cd 42_inception
 ```
 
-### 2. Create the secrets
+### 2. Enable Docker daemon metrics on the host
+
+Add to `/etc/docker/daemon.json` and restart Docker:
+
+```json
+{
+  "metrics-addr": "0.0.0.0:9323",
+  "experimental": true
+}
+```
+
+```bash
+sudo systemctl restart docker
+```
+
+### 3. Create the secrets
 
 ```bash
 mkdir -p secrets
@@ -110,31 +128,31 @@ echo "strongftppassword"    > secrets/ftp_password.txt
 
 > **Never commit the `secrets/` directory.** It is listed in `.gitignore`.
 
-### 3. Add the domain to `/etc/hosts` (local testing only)
+### 4. Add the domain to `/etc/hosts` (local testing only)
 
 ```bash
 echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
 ```
 
-### 4. Build and start
+### 5. Build and start
 
 ```bash
 make
 ```
 
-### 5. Access the services
+### 6. Access the services
 
-| Service | URL |
-|---|---|
-| WordPress | `https://jaehylee.42.fr` |
-| WordPress admin | `https://jaehylee.42.fr/wp-admin` |
-| Static site | `http://jaehylee.42.fr:8080` |
-| Adminer | `http://jaehylee.42.fr:8081` |
-| FTP | `ftp://jaehylee.42.fr:21` |
+| Service | URL | Notes |
+|---|---|---|
+| WordPress | `https://jaehylee.42.fr` | Accept self-signed cert warning |
+| WordPress admin | `https://jaehylee.42.fr/wp-admin` | Credentials in `secrets/` |
+| Static site | `http://jaehylee.42.fr:8080` | Portfolio/resume |
+| Adminer | `http://jaehylee.42.fr:8081` | Database UI |
+| FTP | `ftp://jaehylee.42.fr:21` | Credentials in `secrets/` |
+| Grafana | `http://jaehylee.42.fr:3000` | Default: `admin` / `admin` |
+| Prometheus | `http://jaehylee.42.fr:9090` | No login required |
 
-Accept the self-signed certificate warning on first visit to the WordPress site. WordPress is fully installed automatically — no browser wizard required.
-
-### 6. Stop and clean up
+### 7. Stop and clean up
 
 ```bash
 # Stop containers (preserves volumes)
@@ -150,20 +168,7 @@ make fclean
 .
 ├── docker-compose.yml
 ├── Makefile
-├── secrets/                    # Not committed to Git
-│   ├── db_root_password.txt
-│   ├── db_name.txt
-│   ├── db_user.txt
-│   ├── db_password.txt
-│   ├── redis_password.txt
-│   ├── wp_admin_user.txt
-│   ├── wp_admin_password.txt
-│   ├── wp_admin_email.txt
-│   ├── wp_user.txt
-│   ├── wp_user_password.txt
-│   ├── wp_user_email.txt
-│   ├── ftp_user.txt
-│   └── ftp_password.txt
+├── secrets/
 ├── nginx/
 │   ├── Dockerfile
 │   └── nginx.conf
@@ -191,14 +196,20 @@ make fclean
 │       ├── template.html
 │       ├── index.md
 │       ├── style.css
-│       ├── name.bar
-│       ├── title.bar
-│       ├── description.bar
-│       └── pubDate.bar
-└── adminer/
+│       └── *.bar
+├── adminer/
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── php-fpm.conf
+└── monitoring/
     ├── Dockerfile
-    ├── nginx.conf
-    └── php-fpm.conf
+    ├── supervisord.conf
+    ├── prometheus.yml
+    └── grafana/
+        ├── provisioning/
+        │   ├── datasources/prometheus.yml
+        │   └── dashboards/dashboard.yml
+        └── dashboards/docker.json
 ```
 
 ---
@@ -220,6 +231,9 @@ make fclean
 - [vsftpd manual](https://security.appspot.com/vsftpd/vsftpd_conf.html)
 - [Adminer documentation](https://www.adminer.org/)
 - [barbell — BQN template engine](https://github.com/jhvst/barbell)
+- [Prometheus documentation](https://prometheus.io/docs/introduction/overview/)
+- [Grafana documentation](https://grafana.com/docs/)
+- [Docker daemon metrics](https://docs.docker.com/config/daemon/prometheus/)
 - [OpenSSL TLS 1.3 overview](https://www.openssl.org/blog/blog/2018/09/11/release111/)
 - [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
 
@@ -233,17 +247,20 @@ make fclean
 - [HSTS — HTTP Strict Transport Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)
 - [Redis eviction policies](https://redis.io/docs/reference/eviction/)
 - [vsftpd and passive mode FTP](https://wiki.alpinelinux.org/wiki/FTP)
+- [Grafana provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/)
+- [Prometheus scrape configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
 
 ### AI Usage
 
 **Claude (Anthropic)** was used as an assistant throughout this project for the following tasks:
 
-- **Dockerfile generation** — producing Alpine 3.22.3-based Dockerfiles for all seven services, including the correct `apk` package names, multi-stage builds (static site), and per-service entrypoint scripts.
-- **docker-compose.yml structure** — defining multi-service orchestration, the unified `limbo` bridge network, named volumes, and secret injection patterns across all services.
+- **Dockerfile generation** — producing Alpine 3.22.3-based Dockerfiles for all eight services, including multi-stage builds (static site), supervisord-based process management (monitoring), and per-service entrypoint scripts.
+- **docker-compose.yml structure** — defining multi-service orchestration, the unified `limbo` bridge network, named volumes, `extra_hosts` for host metrics access, and secret injection patterns across all services.
 - **Docker Secrets integration** — designing consistent `entrypoint.sh` scripts across mariadb, wordpress, redis, and ftp that read secret files at runtime, so raw credentials never appear as environment variable values.
 - **nginx configuration** — TLS 1.3-only enforcement, HTTP→HTTPS redirect, FastCGI proxying to PHP-FPM, static asset caching, and security headers.
 - **WordPress automation** — using WP-CLI in the WordPress entrypoint to fully install WordPress, create the admin and subscriber accounts, and enable the Redis object cache plugin without any browser interaction.
 - **Static site pipeline** — replicating the barbell `|variable|` substitution mechanic with `sed` and `pandoc` inside a multi-stage Alpine build.
+- **Monitoring stack** — configuring Prometheus to scrape the Docker daemon metrics endpoint, provisioning Grafana with a datasource and Docker dashboard automatically at startup, and wiring both processes under supervisord.
 - **Documentation** — drafting and structuring this README, USER_DOC.md, and DEV_DOC.md.
 
 AI was used as a productivity and reference tool. All generated output was reviewed, understood, and validated before being included in the project.

@@ -1,0 +1,79 @@
+{
+  "title": "Docker Containers",
+  "uid": "inception-docker",
+  "schemaVersion": 36,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Running containers",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "targets": [{
+        "expr": "engine_daemon_container_states_containers{state=\"running\"}",
+        "legendFormat": "Running"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "CPU usage % per container",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "targets": [{
+        "expr": "rate(container_cpu_usage_seconds_total[1m]) * 100",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Memory usage per container (MB)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "targets": [{
+        "expr": "container_memory_usage_bytes / 1024 / 1024",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Network RX per container (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(container_network_receive_bytes_total[1m])",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Network TX per container (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(container_network_transmit_bytes_total[1m])",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 6,
+      "title": "Block I/O read per container (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(container_blkio_device_usage_total{op=\"Read\"}[1m])",
+        "legendFormat": "{{name}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "Block I/O write per container (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "rate(container_blkio_device_usage_total{op=\"Write\"}[1m])",
+        "legendFormat": "{{name}}"
+      }]
+    }
+  ]
+}

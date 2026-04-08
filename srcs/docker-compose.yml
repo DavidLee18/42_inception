@@ -149,10 +149,27 @@ services:
     networks:
       - limbo
 
+  monitoring:
+    build:
+      context: ./monitoring
+    restart: unless-stopped
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    ports:
+      - "9090:9090" # Prometheus
+      - "3000:3000" # Grafana
+    volumes:
+      - prometheus_data:/var/lib/prometheus
+      - grafana_data:/var/lib/grafana
+    networks:
+      - limbo
+
 volumes:
   db_data:
   wp_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   limbo:
