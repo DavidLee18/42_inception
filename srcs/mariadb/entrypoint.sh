@@ -20,19 +20,17 @@ if [ ! -d "/var/lib/mariadb/mariadb" ]; then
     echo "Initialising MariaDB data directory..."
     mariadb-install-db --user=maria --datadir=/var/lib/mariadb --skip-test-db > /dev/null
 
-    rm /etc/my.cnf.d/mariadb-server.cnf
-    
     # Start a temporary server to run setup SQL
     mariadbd --user=maria --skip-networking --socket=/run/mariadbd/mariadbd.sock &
     TEMP_PID=$!
 
     # Wait until the socket is ready
-    until mariadb-admin --socket=/run/mariadb/mariadbd.sock ping --silent; do
+    until mariadb-admin --socket=/run/mariadbd/mariadbd.sock ping --silent; do
         sleep 0.2
     done
 
     # Bootstrap: set root password, create DB and user
-    mariadb --socket=/run/mariadb/mariadb.sock <<-EOSQL
+    mariadb --socket=/run/mariadbd/mariadbd.sock <<-EOSQL
         ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASSWORD}';
         CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';

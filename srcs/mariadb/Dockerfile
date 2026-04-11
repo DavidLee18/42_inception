@@ -11,7 +11,8 @@ RUN addgroup -S maria \
 RUN mkdir -p /var/lib/mariadb /run/mariadbd \
     && chown -R maria:maria /var/lib/mariadb /run/mariadbd
 
-# Copy custom config
+# Remove the default config (sets port=0 / skip-networking) and copy ours
+RUN rm -f /etc/my.cnf.d/mariadb-server.cnf
 COPY my.cnf /etc/my.cnf.d/custom.cnf
 
 # Copy entrypoint that initialises the DB and reads Docker secrets
