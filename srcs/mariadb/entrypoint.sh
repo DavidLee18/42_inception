@@ -18,7 +18,7 @@ DB_PASSWORD=$(read_secret "$MYSQL_PASSWORD_FILE")
 # Initialise the data directory only on first start
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "Initialising MariaDB data directory..."
-    mariadb-install-db --user=maria --datadir=/var/lib/mysql --skip-test-db > /dev/null
+    mariadb-install-db --user=mysql --datadir=/var/lib/mysql --skip-test-db > /dev/null
 
     # Start a temporary server to run setup SQL
     mariadbd --user=mysql --skip-networking --socket=/run/mysqld/mysqld.sock &
