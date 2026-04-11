@@ -70,9 +70,10 @@ fi
 
 # ── Wait for MariaDB to be ready ────────────────────────────────────────────
 echo "Waiting for MariaDB..."
-until wp db check --allow-root --path=/var/www/html > /dev/null 2>&1; do
+until nc -z mariadb 3306 2>/dev/null; do
     sleep 1
 done
+echo "MariaDB is up."
 
 # ── Install WordPress core and create users (first start only) ──────────────
 if ! wp core is-installed --allow-root --path=/var/www/html > /dev/null 2>&1; then

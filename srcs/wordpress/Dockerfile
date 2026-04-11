@@ -19,7 +19,8 @@ RUN apk add --no-cache \
     php83-iconv \
     php83-session \
     curl \
-    tar
+    tar \
+    netcat-openbsd
 
 RUN ln -sf /usr/bin/php83 /usr/bin/php
 

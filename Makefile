@@ -3,13 +3,14 @@ NAME    = inception
 all: $(NAME)
 
 $(NAME):
-	cd srcs && docker compose up -d --build
+	docker compose -f srcs/docker-compose.yml up -d --build
 
 down:
-	cd srcs && docker compose -f down
+	docker compose -f srcs/docker-compose.yml down
 
 fclean: down
-	cd srcs && docker compose -f down --volumes --rmi all --remove-orphans && docker image prune -af
+	docker compose -f srcs/docker-compose.yml down --volumes --rmi all --remove-orphans
+	docker image prune -af
 
 re: fclean all
 
