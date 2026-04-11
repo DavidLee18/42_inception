@@ -115,6 +115,9 @@ if ! wp core is-installed --allow-root --path=/var/www/html > /dev/null 2>&1; th
         --allow-root \
         --path=/var/www/html
     wp redis enable --allow-root --path=/var/www/html
+
+    # Fix ownership — wp-cli ran as root but php-fpm runs as nobody
+    chown -R nobody:nobody /var/www/html/wp-content
 fi
 
 exec "$@"
