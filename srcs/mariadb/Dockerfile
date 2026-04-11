@@ -4,6 +4,9 @@ RUN apk add --no-cache \
     mariadb \
     mariadb-client
 
+RUN addgroup -S maria \
+    && adduser -S -D -H -G maria -s /sbin/nologin maria
+
 # Create the data directory and set ownership
 RUN mkdir -p /var/lib/mariadb /run/mariadbd \
     && chown -R maria:maria /var/lib/mariadb /run/mariadbd
@@ -18,4 +21,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3306
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["mariadbd", "--user=maria", "--port=3306", "--bind-address=0.0.0.0"]
+CMD ["mariadbd", "--user=maria", "--port=3306", "--bind-address=0.0.0.0", "--socket=/run/mariadbd/mariadbd.sock"]
