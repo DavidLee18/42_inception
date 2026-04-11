@@ -32,6 +32,8 @@ echo "$WP_ADMIN_USER" | grep -qi "admin" && {
 # ── Write wp-config.php on first start ──────────────────────────────────────
 if [ ! -f /var/www/html/wp-config.php ]; then
     echo "Generating wp-config.php..."
+
+    # Part 1: DB config (needs shell variable expansion)
     cat > /var/www/html/wp-config.php <<EOF
 <?php
 define('DB_NAME',     '${DB_NAME}');
@@ -40,6 +42,17 @@ define('DB_PASSWORD', '${DB_PASSWORD}');
 define('DB_HOST',     '${WORDPRESS_DB_HOST}');
 define('DB_CHARSET',  'utf8mb4');
 define('DB_COLLATE',  '');
+
+EOF
+
+    # Part 2: Salts (fetched verbatim — must NOT go through shell expansion
+    # because the values contain $ signs). Placed before wp-settings.php
+    # so the constants are defined when WordPress reads them.
+    curl -fsSL https://api.wordpress.org/secret-key/1.1/salt/ \
+        >> /var/www/html/wp-config.php
+
+    # Part 3: Remaining config
+    cat >> /var/www/html/wp-config.php <<EOF
 
 define('WP_REDIS_HOST',     'redis');
 define('WP_REDIS_PORT',     6379);
@@ -59,10 +72,6 @@ if (!defined('ABSPATH')) {
 
 require_once ABSPATH . 'wp-settings.php';
 EOF
-
-    # Append fresh salts
-    curl -fsSL https://api.wordpress.org/secret-key/1.1/salt/ \
-        >> /var/www/html/wp-config.php
 
     chown nobody:nobody /var/www/html/wp-config.php
     chmod 640 /var/www/html/wp-config.php
