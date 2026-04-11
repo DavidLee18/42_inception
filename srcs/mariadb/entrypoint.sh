@@ -20,6 +20,8 @@ if [ ! -d "/var/lib/mariadb/mariadb" ]; then
     echo "Initialising MariaDB data directory..."
     mariadb-install-db --user=maria --datadir=/var/lib/mariadb --skip-test-db > /dev/null
 
+    rm /etc/my.cnf.d/mariadb-server.cnf
+    
     # Start a temporary server to run setup SQL
     mariadbd --user=maria --skip-networking --socket=/run/mariadbd/mariadbd.sock &
     TEMP_PID=$!
@@ -43,7 +45,5 @@ EOSQL
     wait "$TEMP_PID"
     echo "MariaDB initialisation complete."
 fi
-
-rm /etc/my.cnf.d/mariadb-server.cnf
 
 exec "$@"
