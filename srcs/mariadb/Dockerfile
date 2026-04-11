@@ -18,4 +18,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3306
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["mysqld", "--user=mysql"]
+CMD ["mariadbd", "--user=mysql", "--port=3306", "--bind-address=0.0.0.0"]
