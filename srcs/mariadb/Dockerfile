@@ -2,7 +2,8 @@ FROM alpine:3.22.3
 
 RUN apk add --no-cache \
     mariadb \
-    mariadb-client
+    mariadb-client \
+    && rm /etc/my.cnf.d/mariadb.server.cnf
 
 RUN addgroup -S maria \
     && adduser -S -D -H -G maria -s /sbin/nologin maria
