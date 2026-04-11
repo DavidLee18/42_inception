@@ -5,8 +5,8 @@ RUN apk add --no-cache \
     mariadb-client
 
 # Create the data directory and set ownership
-RUN mkdir -p /var/lib/mysql /run/mysqld \
-    && chown -R mysql:mysql /var/lib/mysql /run/mysqld
+RUN mkdir -p /var/lib/mariadb /run/mariadbd \
+    && chown -R maria:maria /var/lib/mariadb /run/mariadbd
 
 # Copy custom config
 COPY my.cnf /etc/my.cnf.d/custom.cnf
@@ -18,4 +18,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3306
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["mariadbd", "--user=mysql", "--port=3306", "--bind-address=0.0.0.0"]
+CMD ["mariadbd", "--user=maria", "--port=3306", "--bind-address=0.0.0.0"]
