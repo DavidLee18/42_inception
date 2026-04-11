@@ -2,8 +2,7 @@ FROM alpine:3.22.3
 
 RUN apk add --no-cache \
     mariadb \
-    mariadb-client \
-    && rm /etc/my.cnf.d/mariadb.server.cnf
+    mariadb-client
 
 RUN addgroup -S maria \
     && adduser -S -D -H -G maria -s /sbin/nologin maria
@@ -22,4 +21,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3306
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["mariadbd", "--user=maria", "--port=3306", "--bind-address=0.0.0.0", "--socket=/run/mariadbd/mariadbd.sock"]
+CMD ["mariadbd", "--user=maria"]

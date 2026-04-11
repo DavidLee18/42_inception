@@ -44,4 +44,6 @@ EOSQL
     echo "MariaDB initialisation complete."
 fi
 
+rm /etc/my.cnf.d/mariadb.server.cnf
+
 exec "$@"
