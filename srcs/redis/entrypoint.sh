@@ -12,4 +12,7 @@ read_secret() {
 
 REDIS_PASSWORD=$(read_secret "$REDIS_PASSWORD_FILE")
 
-exec redis-server /etc/redis/redis.conf --requirepass "$REDIS_PASSWORD"
+# Suppress Redis memory overcommit warning (silently ignored if unprivileged)
+sysctl vm.overcommit_memory=1 2>/dev/null || true
+
+exec su-exec redis redis-server /etc/redis/redis.conf --requirepass "$REDIS_PASSWORD"

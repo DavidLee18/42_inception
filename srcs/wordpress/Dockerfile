@@ -19,6 +19,7 @@ RUN apk add --no-cache \
     php83-iconv \
     php83-session \
     php83-phar \
+    php83-pecl-redis \
     curl \
     tar \
     netcat-openbsd
