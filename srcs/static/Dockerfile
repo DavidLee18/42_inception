@@ -1,12 +1,22 @@
 # ── Stage 1: build ──────────────────────────────────────────────────────────
 FROM alpine:3.22.3 AS builder
 
-RUN apk update && apk add --no-cache cbqn
+RUN apk update && apk add --no-cache git clang make libffi-dev libstdc++-dev
+
+WORKDIR /build
+
+RUN git clone https://github.com/dzaima/CBQN.git
+
+WORKDIR /build/CBQN
+ENV CXX=clang++
+
+RUN git submodule update --init --recursive
+RUN mv makefile Makefile && make
 
 COPY site/ /build/site/
-COPY template.bqn /build
+COPY template.bqn /build/site/
 
-RUN cbqn /build/template.bqn < /build/site/template.html > /build/site/index.html
+RUN ./BQN /build/site/template.bqn /build/site/template.html > /build/site/index.html
 
 # ── Stage 2: serve ──────────────────────────────────────────────────────────
 FROM alpine:3.22.3

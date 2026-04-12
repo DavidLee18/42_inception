@@ -1,4 +1,5 @@
 Template ← {
+  0=+´'|'=𝕩?𝕩;
   parts ← +`'|'=𝕩
   "unclosed template"!0=2|⌈´parts
   back ← 1↓𝕩/˜2≤parts
