@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     supervisor
 
 RUN mkdir -p /etc/grafana && touch /etc/grafana/grafana.ini
+RUN echo -e "[paths]\nprovisioning = /etc/grafana/provisioning" > /etc/grafana/grafana.ini
 
 # ── Prometheus configuration ─────────────────────────────────────────────────
 COPY prometheus.yml /etc/prometheus/prometheus.yml
