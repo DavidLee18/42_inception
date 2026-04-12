@@ -13,7 +13,7 @@ A POSIX-compliant shell written in C, supporting pipes, redirections,
 environment variables, and built-in commands. with semi-garbage-collector!
 </div>
 
-<h3>Philosophers <i>(2025)</i>
+<h3>Philosophers <i>(2025)</i></h3>
 <div>
 A solution to the dining philosophers problem using POSIX threads and
 mutexes, exploring concurrent programming in C.
