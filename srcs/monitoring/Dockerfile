@@ -6,7 +6,7 @@ RUN apk add --no-cache \
     grafana \
     supervisor
 
-RUN touch /etc/grafana/grafana.ini
+RUN mkdir -p /etc/grafana && touch /etc/grafana/grafana.ini
 
 # ── Prometheus configuration ─────────────────────────────────────────────────
 COPY prometheus.yml /etc/prometheus/prometheus.yml
