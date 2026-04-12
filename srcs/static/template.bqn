@@ -1,11 +1,19 @@
 Template ← {
   parts ← +`'|'=𝕩
-  front ← 𝕩/˜0=parts
+  "unclosed template"!0=2|⌈´parts
   back ← 1↓𝕩/˜2≤parts
+  front ← 𝕩/˜0=parts
   var ← 1↓𝕩/˜1=parts
-  # switch var into a concrete
-  concrete ← "DATE"
+  concrete ← •FChars var∾".bar"
+  2<⌈´parts?front∾concrete∾𝕊back;
+  parts ← +`'|'=𝕩
+  back ← 1↓𝕩/˜2≤parts
+  front ← 𝕩/˜0=parts
+  var ← 1↓𝕩/˜1=parts
+  concrete ← •FChars var∾".bar"
   front∾concrete∾back
 }
-ex1 ← "dfvmfdvlfdkvmfdkldm|date|dfnfdlvmflkvm"
-Template ex1
+"too many or too less args"!1=≠•args
+lines ← •FLines ⊑•args
+ress ← Template¨lines
+•Out¨ress
