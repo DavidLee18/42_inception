@@ -16,8 +16,9 @@ COPY grafana/provisioning/datasources/prometheus.yml \
      /etc/grafana/provisioning/datasources/prometheus.yml
 COPY grafana/provisioning/dashboards/dashboard.yml \
      /etc/grafana/provisioning/dashboards/dashboard.yml
+RUN mkdir -p /etc/grafana/dashboards
 COPY grafana/dashboards/docker.json \
-     /var/lib/grafana/dashboards/docker.json
+     /etc/grafana/dashboards/docker.json
 
 # ── Supervisord configuration ─────────────────────────────────────────────────
 COPY supervisord.conf /etc/supervisord.conf
