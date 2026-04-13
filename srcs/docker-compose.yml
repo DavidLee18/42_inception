@@ -40,9 +40,9 @@ services:
       - db_password
     environment:
       MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
-      MYSQL_DATABASE_FILE:      /run/secrets/db_name
-      MYSQL_USER_FILE:          /run/secrets/db_user
-      MYSQL_PASSWORD_FILE:      /run/secrets/db_password
+      MYSQL_DATABASE_FILE: /run/secrets/db_name
+      MYSQL_USER_FILE: /run/secrets/db_user
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
     volumes:
       - db_data:/var/lib/mariadb
     networks:
@@ -67,17 +67,17 @@ services:
       - wp_user_password
       - wp_user_email
     environment:
-      WORDPRESS_DB_HOST:          mariadb:3306
-      WORDPRESS_DB_NAME_FILE:     /run/secrets/db_name
-      WORDPRESS_DB_USER_FILE:     /run/secrets/db_user
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME_FILE: /run/secrets/db_name
+      WORDPRESS_DB_USER_FILE: /run/secrets/db_user
       WORDPRESS_DB_PASSWORD_FILE: /run/secrets/db_password
-      REDIS_PASSWORD_FILE:        /run/secrets/redis_password
-      WP_ADMIN_USER_FILE:         /run/secrets/wp_admin_user
-      WP_ADMIN_PASSWORD_FILE:     /run/secrets/wp_admin_password
-      WP_ADMIN_EMAIL_FILE:        /run/secrets/wp_admin_email
-      WP_USER_FILE:               /run/secrets/wp_user
-      WP_USER_PASSWORD_FILE:      /run/secrets/wp_user_password
-      WP_USER_EMAIL_FILE:         /run/secrets/wp_user_email
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      WP_ADMIN_USER_FILE: /run/secrets/wp_admin_user
+      WP_ADMIN_PASSWORD_FILE: /run/secrets/wp_admin_password
+      WP_ADMIN_EMAIL_FILE: /run/secrets/wp_admin_email
+      WP_USER_FILE: /run/secrets/wp_user
+      WP_USER_PASSWORD_FILE: /run/secrets/wp_user_password
+      WP_USER_EMAIL_FILE: /run/secrets/wp_user_email
     volumes:
       - wp_data:/var/www/html
     networks:
@@ -118,7 +118,7 @@ services:
       - ftp_user
       - ftp_password
     environment:
-      FTP_USER_FILE:     /run/secrets/ftp_user
+      FTP_USER_FILE: /run/secrets/ftp_user
       FTP_PASSWORD_FILE: /run/secrets/ftp_password
     volumes:
       - wp_data:/var/www/html
@@ -162,7 +162,14 @@ services:
       - grafana_data:/var/lib/grafana
     networks:
       - limbo
-
+  cadvisor:
+    build:
+      context: ./cadvisor
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - limbo
 volumes:
   db_data:
   wp_data:
