@@ -70,7 +70,7 @@ All eight containers share a single custom bridge network named **`limbo`**. Onl
 | Backup | Via `docker volume` commands | Direct filesystem access |
 | Typical use | Persistent data (databases, uploads) | Development (live code reload) |
 
-This project uses **named Docker Volumes**: `db_data`, `wp_data`, `redis_data`, `prometheus_data`, and `grafana_data`.
+This project uses both **named Docker Volumes**(`redis_data`, `prometheus_data`, `grafana_data`) and **Bind Mounts**(`db_data`, `wp_data`). The Bind Mounts are only used because it was required by the subject.
 
 ---
 
