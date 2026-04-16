@@ -21,6 +21,9 @@ RUN mkdir -p /etc/grafana/dashboards
 COPY grafana/dashboards/docker.json \
      /etc/grafana/dashboards/docker.json
 
+COPY grafana/dashboards/prometheus.json \
+     /etc/grafana/dashboards/prometheus.json
+
 # ── Supervisord configuration ─────────────────────────────────────────────────
 COPY supervisord.conf /etc/supervisord.conf
 
