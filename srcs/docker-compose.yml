@@ -174,9 +174,20 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - limbo
+
 volumes:
   db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/jaehylee/data/db
   wp_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/jaehylee/data/wp
   redis_data:
   prometheus_data:
   grafana_data:
