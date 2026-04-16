@@ -7,7 +7,7 @@ scrape_configs:
   - job_name: "docker"
     static_configs:
       # host-gateway resolves to the host machine from inside the container
-      - targets: ["host-gateway:9323"]
+      - targets: ["DOCKER_METRICS_HOST"]
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance

@@ -54,8 +54,8 @@ EOF
     # Part 3: Remaining config
     cat >> /var/www/html/wp-config.php <<EOF
 
-define('WP_REDIS_HOST',     'redis');
-define('WP_REDIS_PORT',     6379);
+define('WP_REDIS_HOST',     '${REDIS_HOST}');
+define('WP_REDIS_PORT',     ${REDIS_PORT});
 define('WP_REDIS_PASSWORD', '${REDIS_PASSWORD}');
 define('WP_REDIS_TIMEOUT',  1);
 define('WP_REDIS_DATABASE', 0);
@@ -63,8 +63,8 @@ define('WP_REDIS_DATABASE', 0);
 \$table_prefix = 'wp_';
 
 define('WP_DEBUG',   false);
-define('WP_HOME',    'https://jaehylee.42.fr');
-define('WP_SITEURL', 'https://jaehylee.42.fr');
+define('WP_HOME',    'https://${DOMAIN_NAME}');
+define('WP_SITEURL', 'https://${DOMAIN_NAME}');
 
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/');
@@ -79,7 +79,7 @@ fi
 
 # ── Wait for MariaDB to be ready ────────────────────────────────────────────
 echo "Waiting for MariaDB..."
-until nc -z mariadb 3306 2>/dev/null; do
+until nc -z ${DB_HOST} ${DB_PORT} 2>/dev/null; do
     sleep 1
 done
 echo "MariaDB is up."
@@ -90,7 +90,7 @@ if ! wp core is-installed --allow-root --path=/var/www/html > /dev/null 2>&1; th
     wp core install \
         --allow-root \
         --path=/var/www/html \
-        --url="https://jaehylee.42.fr" \
+        --url="https://${DOMAIN_NAME}" \
         --title="Inception" \
         --admin_user="${WP_ADMIN_USER}" \
         --admin_password="${WP_ADMIN_PASSWORD}" \

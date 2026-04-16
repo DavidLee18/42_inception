@@ -19,14 +19,21 @@ if [ "$FTP_USER" = "root" ]; then
     exit 1
 fi
 
-# Create the FTP user if it does not exist, with the WordPress volume as home
+# Substitute pasv_address with runtime env var
+if [ -z "$DOMAIN_NAME" ]; then
+    echo "ERROR: DOMAIN_NAME is not set." >&2
+    exit 1
+fi
+sed -i "s|pasv_address=.*|pasv_address=${DOMAIN_NAME}|" \
+    /etc/vsftpd/vsftpd.conf
+
+# Create the FTP user if it does not exist
 if ! id "$FTP_USER" > /dev/null 2>&1; then
     echo "Creating FTP user '${FTP_USER}'..."
     adduser -h /var/www/html -s /sbin/nologin -D "$FTP_USER"
     echo "${FTP_USER}:${FTP_PASSWORD}" | chpasswd
 fi
 
-# Give the FTP user ownership of the WordPress web root
 chown -R "${FTP_USER}:${FTP_USER}" /var/www/html
 
 exec "$@"
