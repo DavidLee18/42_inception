@@ -67,6 +67,11 @@ services:
       - wp_user_password
       - wp_user_email
     environment:
+      DOMAIN_NAME: ${DOMAIN_NAME}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
       WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
       WORDPRESS_DB_NAME_FILE: /run/secrets/db_name
       WORDPRESS_DB_USER_FILE: /run/secrets/db_user
