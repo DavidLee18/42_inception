@@ -54,8 +54,8 @@ EOF
     # Part 3: Remaining config
     cat >> /var/www/html/wp-config.php <<EOF
 
-define('WP_REDIS_HOST',     '${REDIS_HOST}');
-define('WP_REDIS_PORT',     ${REDIS_PORT});
+define('WP_REDIS_HOST',     '${REDIS_HOST:-redis}');
+define('WP_REDIS_PORT',     ${REDIS_PORT:-6379});
 define('WP_REDIS_PASSWORD', '${REDIS_PASSWORD}');
 define('WP_REDIS_TIMEOUT',  1);
 define('WP_REDIS_DATABASE', 0);

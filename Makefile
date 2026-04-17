@@ -13,6 +13,8 @@ down:
 fclean: down
 	docker compose -f srcs/docker-compose.yml down --volumes --rmi all --remove-orphans
 	docker image prune -af
+	rm -rf /home/jaehylee/data/db
+	rm -rf /home/jaehylee/data/wp
 
 re: fclean all
 
