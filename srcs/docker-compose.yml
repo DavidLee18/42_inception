@@ -159,7 +159,7 @@ services:
       context: ./monitoring
     restart: unless-stopped
     extra_hosts:
-      - "host-gateway:host-gateway"
+      - "host.docker.internal:host-gateway"
     environment:
       DOCKER_METRICS_HOST: ${DOCKER_METRICS_HOST}
     ports:
