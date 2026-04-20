@@ -11,6 +11,6 @@ RUN openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
   -out /etc/nginx/ssl/server.crt \
   -subj "/CN=jaehylee.42.fr"
 
-EXPOSE 80 443
+EXPOSE 443
 
 CMD ["nginx", "-g", "daemon off;"]
