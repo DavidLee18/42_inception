@@ -1,31 +1,3 @@
-#!/usr/bin/env zsh
-set -euo pipefail
-
-mkdir -p vm-project/ansible
-cd vm-project
-
-# Vagrantfile (VirtualBox + ansible_local for zero-host-root)
-cat > Vagrantfile << 'EOF'
-Vagrant.configure("2") do |config|
-  config.vm.box = "bento/ubuntu-24.04"  # stable LTS guest; change only if required
-  config.vm.hostname = "automated-vm"
-
-  config.vm.provider "virtualbox" do |vb|
-    vb.memory = "2048"
-    vb.cpus = 2
-    vb.customize ["modifyvm", :id, "--uartmode1", "disconnected"]  # suppresses log spam
-  end
-
-  # Ansible runs inside the guest (idempotent, no host privileges needed)
-  config.vm.provision "ansible_local" do |ansible|
-    ansible.playbook = "ansible/playbook.yml"
-    ansible.verbose = false
-  end
-end
-EOF
-
-# Ansible playbook (maximal idempotence via declarative modules)
-cat > ansible/playbook.yml << 'EOF'
 ---
 - name: Fully configure VM (idempotent)
   hosts: all
@@ -82,12 +54,3 @@ cat > ansible/playbook.yml << 'EOF'
       service:
         name: ssh
         state: restarted
-EOF
-
-echo "Project ready. Run the following commands, Sir:"
-echo "  cd vm-project"
-echo "  vagrant up          # creates + provisions (idempotent after first run)"
-echo "  vagrant provision   # re-apply Ansible only (zero VM changes)"
-echo "  vagrant ssh         # access"
-echo ""
-echo "Subsequent runs of 'vagrant up' or 'vagrant provision' will enforce exact state with ~96% probability of zero drift."
