@@ -32,12 +32,7 @@ RUN mkdir -p /var/lib/prometheus /var/lib/grafana \
     && chown -R nobody:nobody /var/lib/prometheus \
     && chown -R grafana:grafana /var/lib/grafana 2>/dev/null || true
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Prometheus: 9090  Grafana: 3000
 EXPOSE 9090 3000
-
-ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["supervisord", "-c", "/etc/supervisord.conf", "-n"]

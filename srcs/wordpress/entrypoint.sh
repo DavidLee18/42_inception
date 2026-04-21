@@ -7,21 +7,20 @@ read_secret() {
         echo "ERROR: secret file not found: $file" >&2
         exit 1
     fi
-    cat "$file"
+    tr -d '\r\n' < "$file"
 }
 
 # ── Read all secrets ────────────────────────────────────────────────────────
-DB_NAME=$(read_secret "$WORDPRESS_DB_NAME_FILE")
-DB_USER=$(read_secret "$WORDPRESS_DB_USER_FILE")
-DB_PASSWORD=$(read_secret "$WORDPRESS_DB_PASSWORD_FILE")
-REDIS_PASSWORD=$(read_secret "$REDIS_PASSWORD_FILE")
-
-WP_ADMIN_USER=$(read_secret "$WP_ADMIN_USER_FILE")
-WP_ADMIN_PASSWORD=$(read_secret "$WP_ADMIN_PASSWORD_FILE")
-WP_ADMIN_EMAIL=$(read_secret "$WP_ADMIN_EMAIL_FILE")
-WP_USER=$(read_secret "$WP_USER_FILE")
-WP_USER_PASSWORD=$(read_secret "$WP_USER_PASSWORD_FILE")
-WP_USER_EMAIL=$(read_secret "$WP_USER_EMAIL_FILE")
+DB_NAME=$(read_secret /run/secrets/db_name)
+DB_USER=$(read_secret /run/secrets/db_user)
+DB_PASSWORD=$(read_secret /run/secrets/db_password)
+REDIS_PASSWORD=$(read_secret /run/secrets/redis_password)
+WP_ADMIN_USER=$(read_secret /run/secrets/wp_admin_user)
+WP_ADMIN_PASSWORD=$(read_secret /run/secrets/wp_admin_password)
+WP_ADMIN_EMAIL=$(read_secret /run/secrets/wp_admin_email)
+WP_USER=$(read_secret /run/secrets/wp_user)
+WP_USER_PASSWORD=$(read_secret /run/secrets/wp_user_password)
+WP_USER_EMAIL=$(read_secret /run/secrets/wp_user_email)
 
 # ── Guard: admin username must not contain 'admin' (case-insensitive) ───────
 echo "$WP_ADMIN_USER" | grep -qi "admin" && {
@@ -39,7 +38,7 @@ if [ ! -f /var/www/html/wp-config.php ]; then
 define('DB_NAME',     '${DB_NAME}');
 define('DB_USER',     '${DB_USER}');
 define('DB_PASSWORD', '${DB_PASSWORD}');
-define('DB_HOST',     '${WORDPRESS_DB_HOST}');
+define('DB_HOST',     'mariadb:3306');
 define('DB_CHARSET',  'utf8mb4');
 define('DB_COLLATE',  '');
 
@@ -54,17 +53,20 @@ EOF
     # Part 3: Remaining config
     cat >> /var/www/html/wp-config.php <<EOF
 
-define('WP_REDIS_HOST',     '${REDIS_HOST:-redis}');
-define('WP_REDIS_PORT',     ${REDIS_PORT:-6379});
+define('WP_REDIS_HOST',     'redis');
+define('WP_REDIS_PORT',     6379);
 define('WP_REDIS_PASSWORD', '${REDIS_PASSWORD}');
 define('WP_REDIS_TIMEOUT',  1);
 define('WP_REDIS_DATABASE', 0);
 
 \$table_prefix = 'wp_';
 
-define('WP_DEBUG',   false);
-define('WP_HOME',    'https://${DOMAIN_NAME}');
-define('WP_SITEURL', 'https://${DOMAIN_NAME}');
+
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', '/dev/stderr');
+define('WP_DEBUG_DISPLAY', false);
+define('WP_HOME',    'https://jaehylee.42.fr');
+define('WP_SITEURL', 'https://jaehylee.42.fr');
 
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/');
@@ -79,7 +81,7 @@ fi
 
 # ── Wait for MariaDB to be ready ────────────────────────────────────────────
 echo "Waiting for MariaDB..."
-until nc -z ${DB_HOST} ${DB_PORT} 2>/dev/null; do
+until nc -z mariadb 3306 2>/dev/null; do
     sleep 1
 done
 echo "MariaDB is up."
@@ -90,7 +92,7 @@ if ! wp core is-installed --allow-root --path=/var/www/html > /dev/null 2>&1; th
     wp core install \
         --allow-root \
         --path=/var/www/html \
-        --url="https://${DOMAIN_NAME}" \
+        --url="https://jaehylee.42.fr" \
         --title="Inception" \
         --admin_user="${WP_ADMIN_USER}" \
         --admin_password="${WP_ADMIN_PASSWORD}" \

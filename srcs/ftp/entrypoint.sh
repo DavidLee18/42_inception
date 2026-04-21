@@ -7,25 +7,17 @@ read_secret() {
         echo "ERROR: secret file not found: $file" >&2
         exit 1
     fi
-    cat "$file"
+    tr -d '\r\n' < "$file"
 }
 
-FTP_USER=$(read_secret "$FTP_USER_FILE")
-FTP_PASSWORD=$(read_secret "$FTP_PASSWORD_FILE")
+FTP_USER=$(read_secret /run/secrets/ftp_user)
+FTP_PASSWORD=$(read_secret /run/secrets/ftp_password)
 
 # Validate: user must not be root
 if [ "$FTP_USER" = "root" ]; then
     echo "ERROR: FTP user cannot be root." >&2
     exit 1
 fi
-
-# Substitute pasv_address with runtime env var
-if [ -z "$DOMAIN_NAME" ]; then
-    echo "ERROR: DOMAIN_NAME is not set." >&2
-    exit 1
-fi
-sed -i "s|pasv_address=.*|pasv_address=${DOMAIN_NAME}|" \
-    /etc/vsftpd/vsftpd.conf
 
 # Create the FTP user if it does not exist
 if ! id "$FTP_USER" > /dev/null 2>&1; then

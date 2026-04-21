@@ -7,13 +7,13 @@ read_secret() {
         echo "ERROR: secret file not found: $file" >&2
         exit 1
     fi
-    cat "$file"
+    tr -d '\r\n' < "$file"
 }
 
-DB_ROOT_PASSWORD=$(read_secret "$MYSQL_ROOT_PASSWORD_FILE")
-DB_NAME=$(read_secret "$MYSQL_DATABASE_FILE")
-DB_USER=$(read_secret "$MYSQL_USER_FILE")
-DB_PASSWORD=$(read_secret "$MYSQL_PASSWORD_FILE")
+DB_ROOT_PASSWORD=$(read_secret /run/secrets/db_root_password)
+DB_NAME=$(read_secret /run/secrets/db_name)
+DB_USER=$(read_secret /run/secrets/db_user)
+DB_PASSWORD=$(read_secret /run/secrets/db_password)
 
 INIT_MARKER="/var/lib/mariadb/.init_complete"
 

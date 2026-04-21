@@ -7,10 +7,10 @@ read_secret() {
         echo "ERROR: secret file not found: $file" >&2
         exit 1
     fi
-    cat "$file"
+    tr -d '\r\n' < "$file"
 }
 
-REDIS_PASSWORD=$(read_secret "$REDIS_PASSWORD_FILE")
+REDIS_PASSWORD=$(read_secret /run/secrets/redis_password)
 
 # Suppress Redis memory overcommit warning (silently ignored if unprivileged)
 sysctl vm.overcommit_memory=1 2>/dev/null || true

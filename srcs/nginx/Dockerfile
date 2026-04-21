@@ -2,6 +2,9 @@ FROM alpine:3.22.4
 
 RUN apk update && apk add --no-cache nginx openssl
 
+RUN ln -sf /dev/stdout /var/log/nginx/access.log \
+ && ln -sf /dev/stderr /var/log/nginx/error.log
+
 COPY nginx.conf /etc/nginx/nginx.conf
 
 RUN mkdir -p /etc/nginx/ssl /var/www/html
