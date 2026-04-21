@@ -58,13 +58,13 @@ Equivalent to `make fclean && make`.
 
 Navigate to `https://jaehylee.42.fr` in your browser. Because the TLS certificate is self-signed, your browser will display a security warning — this is expected. Proceed past it.
 
-The site uses **TLS 1.3 only**. Plain HTTP requests to port 80 are automatically redirected to HTTPS.
+The site uses **TLS 1.3 only**. Port 80 is not published to the host — connect directly via `https://jaehylee.42.fr`.
 
 ---
 
 ## Accessing the WordPress Admin Panel
 
-Go to `https://jaehylee.42.fr/wp-admin` and log in with the administrator credentials from `secrets/wp_admin_user.txt` and `secrets/wp_admin_password.txt`.
+Go to `https://jaehylee.42.fr/wp-admin` and log in with the administrator credentials from `srcs/secrets/wp_admin_user.txt` and `srcs/secrets/wp_admin_password.txt`.
 
 ---
 
@@ -80,9 +80,9 @@ Use the following connection details:
 |---|---|
 | System | MySQL |
 | Server | `mariadb` |
-| Username | contents of `secrets/db_user.txt` |
-| Password | contents of `secrets/db_password.txt` |
-| Database | contents of `secrets/db_name.txt` |
+| Username | contents of `srcs/secrets/db_user.txt` |
+| Password | contents of `srcs/secrets/db_password.txt` |
+| Database | contents of `srcs/secrets/db_name.txt` |
 
 ---
 
@@ -111,10 +111,10 @@ No login required. Use this to run ad-hoc PromQL queries or verify that scrape t
 
 ## Locating and Managing Credentials
 
-All sensitive credentials are stored as plain text files inside the `secrets/` directory at the root of the repository. These files are never committed to Git.
+All sensitive credentials are stored as plain text files inside the `srcs/secrets/` directory. These files are never committed to Git.
 
 ```
-secrets/
+srcs/secrets/
 ├── db_root_password.txt    ← MariaDB root password
 ├── db_name.txt             ← WordPress database name
 ├── db_user.txt             ← WordPress database user
@@ -147,7 +147,7 @@ srcs/.env
 
 ### Changing a credential
 
-1. Edit the relevant file in `secrets/`.
+1. Edit the relevant file in `srcs/secrets/`.
 2. Restart the affected container:
 
 ```bash
@@ -166,7 +166,7 @@ docker compose restart <service>
 docker compose ps
 ```
 
-All eight services should show `running` in the Status column.
+All nine services should show `running` in the Status column.
 
 ### View live logs
 
@@ -196,7 +196,7 @@ Expected output contains `TLSv1.3`.
 
 ```bash
 docker compose exec mariadb mysqladmin \
-    --socket=/run/mysqld/mysqld.sock ping
+    --socket=/run/mariadbd/mariadbd.sock ping
 ```
 
 Expected: `mysqld is alive`
@@ -205,7 +205,7 @@ Expected: `mysqld is alive`
 
 ```bash
 docker compose exec redis redis-cli \
-    -a "$(cat secrets/redis_password.txt)" ping
+    -a "$(cat srcs/secrets/redis_password.txt)" ping
 ```
 
 Expected: `PONG`
@@ -232,7 +232,7 @@ All targets should report `"health": "up"`.
 
 ## Using FTP
 
-Connect to `jaehylee.42.fr` on port `21` using the credentials from `secrets/ftp_user.txt` and `secrets/ftp_password.txt`.
+Connect to `jaehylee.42.fr` on port `21` using the credentials from `srcs/secrets/ftp_user.txt` and `srcs/secrets/ftp_password.txt`.
 
 The FTP user is locked into the WordPress web root (`/var/www/html`) via a chroot jail — navigation above that directory is not possible. Files uploaded via FTP are immediately visible to WordPress.
 
@@ -241,6 +241,6 @@ Passive mode ports `21100–21110` must be reachable from your FTP client. Use p
 Example using `lftp`:
 
 ```bash
-lftp -u "$(cat secrets/ftp_user.txt)","$(cat secrets/ftp_password.txt)" \
+lftp -u "$(cat srcs/secrets/ftp_user.txt)","$(cat srcs/secrets/ftp_password.txt)" \
      ftp://jaehylee.42.fr
 ```

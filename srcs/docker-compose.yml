@@ -30,6 +30,7 @@ secrets:
 
 services:
   mariadb:
+    image: mariadb
     build:
       context: ./mariadb
     restart: unless-stopped
@@ -49,6 +50,7 @@ services:
       - limbo
 
   wordpress:
+    image: wordpress
     build:
       context: ./wordpress
     restart: unless-stopped
@@ -89,6 +91,7 @@ services:
       - limbo
 
   nginx:
+    image: nginx
     build:
       context: ./nginx
     restart: unless-stopped
@@ -102,6 +105,7 @@ services:
       - limbo
 
   redis:
+    image: redis
     build:
       context: ./redis
     restart: unless-stopped
@@ -115,6 +119,7 @@ services:
       - limbo
 
   ftp:
+    image: ftp
     build:
       context: ./ftp
     restart: unless-stopped
@@ -134,6 +139,7 @@ services:
       - limbo
 
   static:
+    image: static
     build:
       context: ./static
     restart: unless-stopped
@@ -143,6 +149,7 @@ services:
       - limbo
 
   adminer:
+    image: adminer
     build:
       context: ./adminer
     restart: unless-stopped
@@ -154,6 +161,7 @@ services:
       - limbo
 
   monitoring:
+    image: monitoring
     build:
       context: ./monitoring
     restart: unless-stopped
@@ -171,6 +179,7 @@ services:
       - limbo
 
   cadvisor:
+    image: cadvisor
     build:
       context: ./cadvisor
     restart: unless-stopped

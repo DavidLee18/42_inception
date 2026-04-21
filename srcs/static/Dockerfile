@@ -1,5 +1,5 @@
 # ── Stage 1: build ──────────────────────────────────────────────────────────
-FROM alpine:3.22.3 AS builder
+FROM alpine:3.22.4 AS builder
 
 RUN apk update && apk add --no-cache git clang make libffi-dev libstdc++-dev
 
@@ -19,7 +19,7 @@ COPY template.bqn /build/site/
 RUN ./BQN /build/site/template.bqn /build/site/template.html > /build/site/index.html
 
 # ── Stage 2: serve ──────────────────────────────────────────────────────────
-FROM alpine:3.22.3
+FROM alpine:3.22.4
 
 RUN apk update && apk add --no-cache nginx
 

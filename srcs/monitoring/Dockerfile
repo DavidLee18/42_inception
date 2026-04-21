@@ -1,4 +1,4 @@
-FROM alpine:3.22.3
+FROM alpine:3.22.4
 
 # ── Install all three components ─────────────────────────────────────────────
 RUN apk add --no-cache \

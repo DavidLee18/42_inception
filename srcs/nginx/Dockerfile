@@ -1,4 +1,4 @@
-FROM alpine:3.22.3
+FROM alpine:3.22.4
 
 RUN apk update && apk add --no-cache nginx openssl
 

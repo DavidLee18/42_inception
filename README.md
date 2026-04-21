@@ -8,7 +8,7 @@
 
 Inception is a system administration project from the 42 curriculum. Its goal is to broaden knowledge of system administration by using **Docker** to set up a small but complete infrastructure composed of several services, all running inside a personal virtual machine.
 
-The project consists of eight containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.3**:
+The project consists of nine containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.4**:
 
 | Service | Role |
 |---|---|
@@ -20,8 +20,9 @@ The project consists of eight containerised services orchestrated with **Docker 
 | **static** | Standalone static resume/portfolio site built with a barbell-style pipeline |
 | **adminer** | Lightweight web-based database management UI |
 | **monitoring** | Prometheus + Grafana in a single container, monitoring all services via the Docker daemon metrics endpoint |
+| **cadvisor** | Lightweight custom metrics exporter that publishes per-container resource usage in Prometheus format |
 
-The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All eight services share a single custom bridge network called `limbo`.
+The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All nine services share a single custom bridge network called `limbo`.
 
 ---
 
@@ -58,7 +59,7 @@ This project uses **Docker Secrets** for all credentials (database passwords, Wo
 | DNS | Docker provides automatic DNS resolution by service name | No container-level DNS; must use `localhost` or IPs |
 | Security | Strong: inter-service traffic is invisible to the host | Weak: no network boundary between container and host |
 
-All eight containers share a single custom bridge network named **`limbo`**. Only ports declared under `ports:` in `docker-compose.yml` are reachable from outside. The `monitoring` container uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint on the host machine without switching to host networking mode.
+All nine containers share a single custom bridge network named **`limbo`**. Only ports declared under `ports:` in `docker-compose.yml` are reachable from outside. The `monitoring` container uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint on the host machine without switching to host networking mode.
 
 ### Docker Volumes vs Bind Mounts
 
@@ -74,7 +75,7 @@ This project uses both **named Docker Volumes**(`redis_data`, `prometheus_data`,
 
 ---
 
-## Quick Start
+## Instructions
 
 ### Prerequisites
 
@@ -121,20 +122,20 @@ EOF
 ### 4. Create the secrets
 
 ```bash
-mkdir -p secrets
-echo "strongrootpassword"   > secrets/db_root_password.txt
-echo "wordpress"            > secrets/db_name.txt
-echo "wpuser"               > secrets/db_user.txt
-echo "strongwppassword"     > secrets/db_password.txt
-echo "strongredispassword"  > secrets/redis_password.txt
-echo "jaehylee"             > secrets/wp_admin_user.txt
-echo "strongadminpassword"  > secrets/wp_admin_password.txt
-echo "jaehylee@42seoul.kr"  > secrets/wp_admin_email.txt
-echo "subscriber1"          > secrets/wp_user.txt
-echo "stronguserpassword"   > secrets/wp_user_password.txt
-echo "user@42seoul.kr"      > secrets/wp_user_email.txt
-echo "ftpuser"              > secrets/ftp_user.txt
-echo "strongftppassword"    > secrets/ftp_password.txt
+mkdir -p srcs/secrets
+echo "strongrootpassword"   > srcs/secrets/db_root_password.txt
+echo "wordpress"            > srcs/secrets/db_name.txt
+echo "wpuser"               > srcs/secrets/db_user.txt
+echo "strongwppassword"     > srcs/secrets/db_password.txt
+echo "strongredispassword"  > srcs/secrets/redis_password.txt
+echo "jaehylee"             > srcs/secrets/wp_admin_user.txt
+echo "strongadminpassword"  > srcs/secrets/wp_admin_password.txt
+echo "jaehylee@42seoul.kr"  > srcs/secrets/wp_admin_email.txt
+echo "subscriber1"          > srcs/secrets/wp_user.txt
+echo "stronguserpassword"   > srcs/secrets/wp_user_password.txt
+echo "user@42seoul.kr"      > srcs/secrets/wp_user_email.txt
+echo "ftpuser"              > srcs/secrets/ftp_user.txt
+echo "strongftppassword"    > srcs/secrets/ftp_password.txt
 ```
 
 > **Constraint:** the WordPress admin username must not contain `admin` (case-insensitive).
@@ -168,56 +169,58 @@ make fclean
 ```
 .
 ├── Makefile
-├── secrets/                         # 13 secret files — never committed to Git
 └── srcs/
+    ├── secrets/                     # 13 secret files — never committed to Git
     ├── .env                         # Non-sensitive config (domain, hostnames, ports)
     ├── docker-compose.yml
     ├── nginx/
-    │   ├── Dockerfile               # Alpine 3.22.3, openssl, nginx
+    │   ├── Dockerfile               # Alpine 3.22.4, openssl, nginx
     │   └── nginx.conf               # TLS 1.3, FastCGI to wordpress:9000
     ├── mariadb/
-    │   ├── Dockerfile               # Alpine 3.22.3, mariadb
+    │   ├── Dockerfile               # Alpine 3.22.4, mariadb
     │   ├── my.cnf                   # utf8mb4, bind 0.0.0.0
-    │   └── entrypoint.sh            # reads secrets, runs mysql_install_db once
+    │   └── entrypoint.sh            # reads secrets, runs mariadb-install-db once
     ├── wordpress/
-    │   ├── Dockerfile               # Alpine 3.22.3, php83-fpm, wp-cli
+    │   ├── Dockerfile               # Alpine 3.22.4, php83-fpm, wp-cli
     │   ├── php-fpm.conf             # listen 0.0.0.0:9000
     │   └── entrypoint.sh            # reads secrets, writes wp-config.php, wp core install
     ├── redis/
-    │   ├── Dockerfile               # Alpine 3.22.3, redis
+    │   ├── Dockerfile               # Alpine 3.22.4, redis
     │   ├── redis.conf               # allkeys-lru, maxmemory 128mb, dangerous cmds disabled
     │   └── entrypoint.sh            # reads secret, passes --requirepass
     ├── ftp/
-    │   ├── Dockerfile               # Alpine 3.22.3, vsftpd
+    │   ├── Dockerfile               # Alpine 3.22.4, vsftpd
     │   ├── vsftpd.conf              # passive mode 21100-21110, chroot jail
     │   └── entrypoint.sh            # reads secrets, sed-substitutes pasv_address, creates FTP user
     ├── static/
-    │   ├── Dockerfile               # multi-stage: Alpine 3.22.3 builder + Alpine 3.22.3 nginx
+    │   ├── Dockerfile               # multi-stage: Alpine 3.22.4 CBQN builder + Alpine 3.22.4 nginx
     │   ├── nginx.conf               # listens on 8080
-    │   ├── build.sh                 # barbell-style |variable| substitution via sed + pandoc
+    │   ├── template.bqn             # BQN template engine script
     │   └── site/
     │       ├── template.html
-    │       ├── index.md
     │       ├── style.css
-    │       └── *.bar
+    │       └── *.bar                # template variable files
     ├── adminer/
-    │   ├── Dockerfile               # Alpine 3.22.3, php83-fpm, nginx, adminer single file
+    │   ├── Dockerfile               # Alpine 3.22.4, php83-fpm, nginx, adminer single file
     │   ├── nginx.conf               # listens on 8081, IP allowlist for private ranges
     │   └── php-fpm.conf             # listen 127.0.0.1:9001
-    └── monitoring/
-        ├── Dockerfile               # Alpine 3.22.3, prometheus, grafana, supervisor
-        ├── entrypoint.sh            # sed-substitutes prometheus.yml, then execs supervisord
-        ├── supervisord.conf         # manages prometheus + grafana as child processes
-        ├── prometheus.yml           # scrapes host:9323 (Docker daemon) and localhost:9090
-        └── grafana/
-            ├── provisioning/
-            │   ├── datasources/
-            │   │   └── prometheus.yml   # auto-wires Prometheus as default datasource
-            │   └── dashboards/
-            │       └── dashboard.yml    # tells Grafana where to load dashboard JSON from
-            └── dashboards/
-                ├── docker.json          # pre-built Docker container metrics dashboard
-                └── prometheus.json      # Prometheus self-monitoring dashboard
+    ├── monitoring/
+    │   ├── Dockerfile               # Alpine 3.22.4, prometheus, grafana, supervisor
+    │   ├── entrypoint.sh            # sed-substitutes prometheus.yml, then execs supervisord
+    │   ├── supervisord.conf         # manages prometheus + grafana as child processes
+    │   ├── prometheus.yml           # scrapes docker daemon, cadvisor, and self
+    │   └── grafana/
+    │       ├── provisioning/
+    │       │   ├── datasources/
+    │       │   │   └── prometheus.yml   # auto-wires Prometheus as default datasource
+    │       │   └── dashboards/
+    │       │       └── dashboard.yml    # tells Grafana where to load dashboard JSON from
+    │       └── dashboards/
+    │           ├── docker.json          # pre-built Docker container metrics dashboard
+    │           └── prometheus.json      # Prometheus self-monitoring dashboard
+    └── cadvisor/
+        ├── Dockerfile               # Alpine 3.22.4, Python 3
+        └── exporter.py              # custom Prometheus metrics exporter
 ```
 
 ---
@@ -262,13 +265,13 @@ make fclean
 
 **Claude (Anthropic)** was used as an assistant throughout this project for the following tasks:
 
-- **Dockerfile generation** — producing Alpine 3.22.3-based Dockerfiles for all eight services, including multi-stage builds (static site), supervisord-based process management (monitoring), and per-service entrypoint scripts.
+- **Dockerfile generation** — producing Alpine 3.22.4-based Dockerfiles for all nine services, including multi-stage builds (static site), supervisord-based process management (monitoring), and per-service entrypoint scripts.
 - **docker-compose.yml structure** — defining multi-service orchestration, the unified `limbo` bridge network, named volumes, `extra_hosts` for host metrics access, and secret injection patterns across all services.
 - **Docker Secrets integration** — designing consistent `entrypoint.sh` scripts that read secret files at runtime so raw credentials never appear as environment variable values.
 - **`.env` integration** — extracting all non-sensitive hardcoded values (domain name, service hostnames, ports) into `srcs/.env` and wiring them through `docker-compose.yml` and entrypoint scripts via runtime `sed` substitution.
 - **nginx configuration** — TLS 1.3-only enforcement, HTTP→HTTPS redirect, FastCGI proxying to PHP-FPM, static asset caching, and security headers including HSTS.
 - **WordPress automation** — using WP-CLI in the WordPress entrypoint to fully install WordPress, create admin and subscriber accounts, and enable the Redis object cache plugin without any browser interaction.
-- **Static site pipeline** — replicating the barbell `|variable|` substitution mechanic with `sed` and `pandoc` inside a multi-stage Alpine build.
+- **Static site pipeline** — replicating the barbell template mechanic using the CBQN interpreter and a BQN template script inside a multi-stage Alpine build.
 - **Monitoring stack** — configuring Prometheus to scrape the Docker daemon metrics endpoint, provisioning Grafana with a datasource and two dashboards (Docker containers and Prometheus self-monitoring) automatically at startup, and wiring both processes under supervisord.
 - **Documentation** — drafting and structuring this README, USER_DOC.md, and DEV_DOC.md.
 

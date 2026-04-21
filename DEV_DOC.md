@@ -78,28 +78,28 @@ EOF
 The stack requires thirteen secret files. Create them manually — never commit them to Git.
 
 ```bash
-mkdir -p secrets
-echo "strongrootpassword"   > secrets/db_root_password.txt
-echo "wordpress"            > secrets/db_name.txt
-echo "wpuser"               > secrets/db_user.txt
-echo "strongwppassword"     > secrets/db_password.txt
-echo "strongredispassword"  > secrets/redis_password.txt
-echo "jaehylee"             > secrets/wp_admin_user.txt
-echo "strongadminpassword"  > secrets/wp_admin_password.txt
-echo "jaehylee@42seoul.kr"  > secrets/wp_admin_email.txt
-echo "subscriber1"          > secrets/wp_user.txt
-echo "stronguserpassword"   > secrets/wp_user_password.txt
-echo "user@42seoul.kr"      > secrets/wp_user_email.txt
-echo "ftpuser"              > secrets/ftp_user.txt
-echo "strongftppassword"    > secrets/ftp_password.txt
+mkdir -p srcs/secrets
+echo "strongrootpassword"   > srcs/secrets/db_root_password.txt
+echo "wordpress"            > srcs/secrets/db_name.txt
+echo "wpuser"               > srcs/secrets/db_user.txt
+echo "strongwppassword"     > srcs/secrets/db_password.txt
+echo "strongredispassword"  > srcs/secrets/redis_password.txt
+echo "jaehylee"             > srcs/secrets/wp_admin_user.txt
+echo "strongadminpassword"  > srcs/secrets/wp_admin_password.txt
+echo "jaehylee@42seoul.kr"  > srcs/secrets/wp_admin_email.txt
+echo "subscriber1"          > srcs/secrets/wp_user.txt
+echo "stronguserpassword"   > srcs/secrets/wp_user_password.txt
+echo "user@42seoul.kr"      > srcs/secrets/wp_user_email.txt
+echo "ftpuser"              > srcs/secrets/ftp_user.txt
+echo "strongftppassword"    > srcs/secrets/ftp_password.txt
 ```
 
 > **Constraint:** the WordPress admin username must not contain `admin` (case-insensitive). The `wordpress/entrypoint.sh` enforces this at startup and exits with an error if violated.
 
-Verify `secrets/` is gitignored:
+Verify `srcs/secrets/` is gitignored:
 
 ```bash
-grep secrets .gitignore   # must return "secrets/"
+grep srcs/secrets .gitignore   # must return "srcs/secrets/"
 ```
 
 ### 5. Add the domain to your hosts file
@@ -113,8 +113,8 @@ echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
 ```
 .
 ├── Makefile
-├── secrets/                         # 13 files as created above
 └── srcs/
+    ├── secrets/                     # 13 files as created above
     ├── .env                         # non-sensitive config
     ├── docker-compose.yml
     ├── nginx/
@@ -139,28 +139,30 @@ echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
     ├── static/
     │   ├── Dockerfile
     │   ├── nginx.conf
-    │   ├── build.sh
+    │   ├── template.bqn
     │   └── site/
     │       ├── template.html
-    │       ├── index.md
     │       ├── style.css
     │       └── *.bar
     ├── adminer/
     │   ├── Dockerfile
     │   ├── nginx.conf
     │   └── php-fpm.conf
-    └── monitoring/
+    ├── monitoring/
+    │   ├── Dockerfile
+    │   ├── entrypoint.sh
+    │   ├── supervisord.conf
+    │   ├── prometheus.yml
+    │   └── grafana/
+    │       ├── provisioning/
+    │       │   ├── datasources/prometheus.yml
+    │       │   └── dashboards/dashboard.yml
+    │       └── dashboards/
+    │           ├── docker.json
+    │           └── prometheus.json
+    └── cadvisor/
         ├── Dockerfile
-        ├── entrypoint.sh
-        ├── supervisord.conf
-        ├── prometheus.yml
-        └── grafana/
-            ├── provisioning/
-            │   ├── datasources/prometheus.yml
-            │   └── dashboards/dashboard.yml
-            └── dashboards/
-                ├── docker.json
-                └── prometheus.json
+        └── exporter.py
 ```
 
 ---
@@ -208,10 +210,12 @@ docker compose up -d --no-deps monitoring
 ```makefile
 NAME = inception
 
-all: up
+all: $(NAME)
 
-up:
-	docker compose -f srcs/docker-compose.yml up -d --build
+$(NAME):
+	mkdir -p /home/jaehylee/data/db /home/jaehylee/data/wp
+	docker compose -f srcs/docker-compose.yml build --no-cache
+	docker compose -f srcs/docker-compose.yml up -d
 
 down:
 	docker compose -f srcs/docker-compose.yml down
@@ -231,7 +235,7 @@ re: fclean all
 
 ### Network
 
-All eight containers share the single `limbo` bridge network:
+All nine containers share the single `limbo` bridge network:
 
 ```yaml
 networks:
@@ -246,7 +250,6 @@ Ports published to the host:
 
 | Port | Service | Protocol |
 |---|---|---|
-| 80 | nginx | HTTP (redirects to 443) |
 | 443 | nginx | HTTPS / TLS 1.3 |
 | 8080 | static | HTTP |
 | 8081 | adminer | HTTP (private ranges only) |
@@ -346,8 +349,8 @@ The 13 secrets in use:
 
 ### mariadb
 
-- Custom Alpine 3.22.3 build (not official image)
-- Initialised with `mysql_install_db` on first start
+- Custom Alpine 3.22.4 build (not official image)
+- Initialised with `mariadb-install-db` on first start
 - Binds to `0.0.0.0` within `limbo` (not exposed to host)
 
 ### redis
@@ -368,8 +371,8 @@ The 13 secrets in use:
 
 Two-stage build:
 
-1. **Builder stage** (Alpine 3.22.3 + pandoc + bash): runs `build.sh`, which converts `site/index.md` to an HTML fragment via pandoc and performs barbell-style `|variable|` substitution via `sed` against `site/template.html`.
-2. **Final stage** (Alpine 3.22.3 + nginx): contains only the compiled `index.html` and `style.css`.
+1. **Builder stage** (Alpine 3.22.4 + clang + make + CBQN): compiles the CBQN interpreter and runs `template.bqn`, which reads `site/template.html` and the `site/*.bar` variable files to produce the final `index.html`.
+2. **Final stage** (Alpine 3.22.4 + nginx): contains only the compiled `index.html` and `style.css`.
 
 To update site content, edit files under `static/site/` and rebuild:
 
@@ -394,6 +397,7 @@ Prometheus targets:
 |---|---|---|
 | `docker` | `host-gateway:9323` | Per-container CPU, memory, network, block I/O |
 | `prometheus` | `localhost:9090` | Prometheus self-monitoring |
+| `cadvisor` | `cadvisor:8080` | Per-container resource metrics via custom exporter |
 
 Grafana dashboards provisioned automatically:
 
@@ -401,6 +405,14 @@ Grafana dashboards provisioned automatically:
 |---|---|---|
 | Docker Containers | `grafana/dashboards/docker.json` | Container resource usage |
 | Prometheus 2.0 Overview | `grafana/dashboards/prometheus.json` | Scrape health, TSDB stats |
+
+### cadvisor
+
+- Python 3 custom metrics exporter that collects per-container resource usage by querying the Docker Engine API via `/var/run/docker.sock` (mounted read-only)
+- Exposes metrics in Prometheus text format on port `8080` at the `/metrics` endpoint
+- Collects per-container CPU, memory, network I/O, and block I/O; refreshes every 5 seconds
+- Scraped by Prometheus via the `cadvisor` job targeting `cadvisor:8080`
+- Has no published host ports — accessible only within `limbo`
 
 ---
 
@@ -456,11 +468,11 @@ docker compose exec wordpress wp redis flush --allow-root --path=/var/www/html
 ```bash
 # Check database is alive
 docker compose exec mariadb mysqladmin \
-    --socket=/run/mysqld/mysqld.sock ping
+    --socket=/run/mariadbd/mariadbd.sock ping
 
 # Open MariaDB CLI as root
 docker compose exec mariadb mariadb \
-    --socket=/run/mysqld/mysqld.sock -u root
+    --socket=/run/mariadbd/mariadbd.sock -u root
 ```
 
 ### Redis
@@ -468,11 +480,11 @@ docker compose exec mariadb mariadb \
 ```bash
 # Ping Redis
 docker compose exec redis redis-cli \
-    -a "$(cat secrets/redis_password.txt)" ping
+    -a "$(cat srcs/secrets/redis_password.txt)" ping
 
 # Check memory usage
 docker compose exec redis redis-cli \
-    -a "$(cat secrets/redis_password.txt)" info memory
+    -a "$(cat srcs/secrets/redis_password.txt)" info memory
 ```
 
 ### Prometheus
