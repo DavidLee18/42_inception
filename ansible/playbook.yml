@@ -1,0 +1,161 @@
+---
+- name: Provision inception VM
+  hosts: all
+
+  vars:
+    project_dir: /vagrant
+
+  tasks:
+
+    # ── System prerequisites ────────────────────────────────────────────────
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      become: yes
+
+    - name: Install prerequisite packages
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - make
+          - git
+        state: present
+      become: yes
+
+    # ── Docker Engine ───────────────────────────────────────────────────────
+
+    - name: Create /etc/apt/keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      become: yes
+
+    - name: Download and dearmor Docker GPG key
+      shell: >
+        curl -fsSL https://download.docker.com/linux/debian/gpg
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+      become: yes
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: >-
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg]
+          https://download.docker.com/linux/debian
+          {{ ansible_distribution_release }} stable
+        state: present
+        filename: docker
+      become: yes
+
+    - name: Install Docker Engine and Compose plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+      become: yes
+
+    - name: Add vagrant user to docker group
+      user:
+        name: vagrant
+        groups: docker
+        append: yes
+      become: yes
+
+    # ── Docker daemon: enable Prometheus metrics endpoint ───────────────────
+
+    - name: Configure Docker daemon
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "metrics-addr": "0.0.0.0:9323",
+            "experimental": true
+          }
+        owner: root
+        group: root
+        mode: "0644"
+      become: yes
+      notify: Restart Docker
+
+    # ── Bind-mount data directories ─────────────────────────────────────────
+    # The Makefile creates these at runtime, but pre-creating them with
+    # vagrant ownership lets `make` run without sudo inside the VM.
+
+    - name: Create bind-mount data directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: vagrant
+        group: vagrant
+        mode: "0755"
+      loop:
+        - /home/jaehylee
+        - /home/jaehylee/data
+        - /home/jaehylee/data/db
+        - /home/jaehylee/data/wp
+      become: yes
+
+    # ── VM-internal hostname resolution ────────────────────────────────────
+
+    - name: Add jaehylee.42.fr to VM /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "127.0.0.1  jaehylee.42.fr"
+        state: present
+      become: yes
+
+    # ── Secrets ─────────────────────────────────────────────────────────────
+    # These tasks run as vagrant (no become) so they write through the
+    # VirtualBox synced folder to the host filesystem. Secrets created here
+    # persist across `vagrant destroy` because they live in the repo tree on
+    # the host (gitignored). `force: no` means re-provisioning is a no-op
+    # once the files exist — the evaluator can edit them without losing changes.
+
+    - name: Create secrets directory
+      file:
+        path: "{{ project_dir }}/srcs/secrets"
+        state: directory
+        mode: "0700"
+
+    - name: Write default secret files (skipped if files already exist)
+      copy:
+        dest: "{{ project_dir }}/srcs/secrets/{{ item.name }}"
+        content: "{{ item.value }}\n"
+        force: no
+        mode: "0600"
+      loop:
+        - { name: db_root_password.txt,  value: changeme_dbroot  }
+        - { name: db_name.txt,           value: wordpress         }
+        - { name: db_user.txt,           value: wpuser            }
+        - { name: db_password.txt,       value: changeme_dbpass   }
+        - { name: redis_password.txt,    value: changeme_redis    }
+        - { name: wp_admin_user.txt,     value: jaehylee          }
+        - { name: wp_admin_password.txt, value: changeme_admin    }
+        - { name: wp_admin_email.txt,    value: jaehylee@42seoul.kr }
+        - { name: wp_user.txt,           value: subscriber1       }
+        - { name: wp_user_password.txt,  value: changeme_user     }
+        - { name: wp_user_email.txt,     value: user@42seoul.kr   }
+        - { name: ftp_user.txt,          value: ftpuser           }
+        - { name: ftp_password.txt,      value: changeme_ftp      }
+
+  # ── Handlers ───────────────────────────────────────────────────────────────
+
+  handlers:
+
+    - name: Restart Docker
+      systemd:
+        name: docker
+        state: restarted
+        enabled: yes
+      become: yes

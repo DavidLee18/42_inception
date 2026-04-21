@@ -48,6 +48,32 @@ services:
       - db_data:/var/lib/mariadb
     networks:
       - limbo
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "--socket=/run/mariadbd/mariadbd.sock", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis
+    build:
+      context: ./redis
+    restart: unless-stopped
+    secrets:
+      - redis_password
+    environment:
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+    volumes:
+      - redis_data:/data
+    networks:
+      - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $(cat /run/secrets/redis_password) ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   wordpress:
     image: wordpress
@@ -55,8 +81,10 @@ services:
       context: ./wordpress
     restart: unless-stopped
     depends_on:
-      - mariadb
-      - redis
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     secrets:
       - db_name
       - db_user
@@ -89,6 +117,12 @@ services:
       - wp_data:/var/www/html
     networks:
       - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   nginx:
     image: nginx
@@ -96,27 +130,20 @@ services:
       context: ./nginx
     restart: unless-stopped
     depends_on:
-      - wordpress
+      wordpress:
+        condition: service_healthy
     ports:
       - "443:443"
     volumes:
       - wp_data:/var/www/html:ro
     networks:
       - limbo
-
-  redis:
-    image: redis
-    build:
-      context: ./redis
-    restart: unless-stopped
-    secrets:
-      - redis_password
-    environment:
-      REDIS_PASSWORD_FILE: /run/secrets/redis_password
-    volumes:
-      - redis_data:/data
-    networks:
-      - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null --no-check-certificate https://127.0.0.1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   ftp:
     image: ftp
@@ -137,6 +164,12 @@ services:
       - "21100-21110:21100-21110"
     networks:
       - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 21"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   static:
     image: static
@@ -147,6 +180,12 @@ services:
       - "8080:8080"
     networks:
       - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   adminer:
     image: adminer
@@ -154,17 +193,43 @@ services:
       context: ./adminer
     restart: unless-stopped
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
     ports:
       - "8081:8081"
     networks:
       - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8081/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  cadvisor:
+    image: cadvisor
+    build:
+      context: ./cadvisor
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   monitoring:
     image: monitoring
     build:
       context: ./monitoring
     restart: unless-stopped
+    depends_on:
+      cadvisor:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -177,16 +242,12 @@ services:
       - grafana_data:/var/lib/grafana
     networks:
       - limbo
-
-  cadvisor:
-    image: cadvisor
-    build:
-      context: ./cadvisor
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - limbo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:9090/-/healthy && wget -qO /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   db_data:

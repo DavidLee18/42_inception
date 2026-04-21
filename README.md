@@ -77,20 +77,64 @@ This project uses both **named Docker Volumes**(`redis_data`, `prometheus_data`,
 
 ## Instructions
 
-### Prerequisites
+### Option A — Automated (Vagrant + Ansible, recommended for evaluations)
+
+**Prerequisites:** [VirtualBox](https://www.virtualbox.org/) and [Vagrant](https://www.vagrantup.com/) installed on the host.
+
+```bash
+git clone https://github.com/DavidLee18/42_inception.git
+cd 42_inception
+vagrant up          # creates VM, installs Docker, writes default secrets
+```
+
+On first `vagrant up`, Ansible automatically:
+- installs Docker Engine and the Compose plugin
+- enables the Docker daemon Prometheus metrics endpoint
+- creates the bind-mount directories at `/home/jaehylee/data/`
+- adds `jaehylee.42.fr → 127.0.0.1` inside the VM
+- writes default secrets to `srcs/secrets/` (skipped if files already exist)
+
+Add the domain to your **host** machine's `/etc/hosts` so the browser resolves it:
+
+```bash
+echo "192.168.56.10  jaehylee.42.fr" | sudo tee -a /etc/hosts
+```
+
+Then SSH in and start the project:
+
+```bash
+vagrant ssh
+cd /vagrant && make
+```
+
+To start a completely fresh evaluation session:
+
+```bash
+vagrant destroy -f && vagrant up
+```
+
+> Default secrets (`changeme_*`) are in `srcs/secrets/`. Edit them before the
+> evaluation if you want non-default credentials — re-provisioning will not
+> overwrite them.
+
+---
+
+### Option B — Manual (bare metal or existing VM)
+
+#### Prerequisites
 
 - Docker Engine ≥ 24
 - Docker Compose plugin (`docker compose`)
 - `make`
 
-### 1. Clone the repository
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/DavidLee18/42_inception.git
 cd 42_inception
 ```
 
-### 2. Enable Docker daemon metrics
+#### 2. Enable Docker daemon metrics
 
 Add to `/etc/docker/daemon.json` and restart Docker:
 
@@ -105,7 +149,7 @@ Add to `/etc/docker/daemon.json` and restart Docker:
 sudo systemctl restart docker
 ```
 
-### 3. Create the `.env` file
+#### 3. Create the `.env` file
 
 ```bash
 cat > srcs/.env <<'EOF'
@@ -115,11 +159,11 @@ DB_HOST=mariadb
 DB_PORT=3306
 REDIS_HOST=redis
 REDIS_PORT=6379
-DOCKER_METRICS_HOST=host-gateway:9323
+DOCKER_METRICS_HOST=host.docker.internal:9323
 EOF
 ```
 
-### 4. Create the secrets
+#### 4. Create the secrets
 
 ```bash
 mkdir -p srcs/secrets
@@ -140,13 +184,13 @@ echo "strongftppassword"    > srcs/secrets/ftp_password.txt
 
 > **Constraint:** the WordPress admin username must not contain `admin` (case-insensitive).
 
-### 5. Add the domain to your hosts file
+#### 5. Add the domain to your hosts file
 
 ```bash
 echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
 ```
 
-### 6. Build and start
+#### 6. Build and start
 
 ```bash
 make
@@ -169,6 +213,9 @@ make fclean
 ```
 .
 ├── Makefile
+├── Vagrantfile                  # VM definition (VirtualBox, 4 GB RAM, 2 CPUs)
+├── ansible/
+│   └── playbook.yml             # idempotent provisioning: Docker, daemon, secrets, hosts
 └── srcs/
     ├── secrets/                     # 13 secret files — never committed to Git
     ├── .env                         # Non-sensitive config (domain, hostnames, ports)
