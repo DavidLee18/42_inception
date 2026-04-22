@@ -1,9 +1,15 @@
 ---
 - name: Provision inception VM
   hosts: all
+  become: yes                                     # [4] play-level; remove per-task become below
 
   vars:
     project_dir: /vagrant
+    docker_version:   "5:27.3.1-1~debian.12~bookworm"
+    docker_cli_ver:   "5:27.3.1-1~debian.12~bookworm"
+    containerd_ver:   "1.7.22-1"
+    compose_ver:      "2.29.7-1~debian.12~bookworm"
+    buildx_ver:       "0.17.1-1~debian.12~bookworm"
 
   tasks:
 
@@ -13,18 +19,15 @@
       apt:
         update_cache: yes
         cache_valid_time: 3600
-      become: yes
 
     - name: Install prerequisite packages
       apt:
-        name:
-          - ca-certificates
-          - curl
-          - gnupg
-          - make
-          - git
+        name: [ca-certificates, curl, gnupg, make, git]
         state: present
-      become: yes
+
+    - name: Set VM hostname
+      hostname:
+        name: inception
 
     # ── Docker Engine ───────────────────────────────────────────────────────
 
@@ -33,7 +36,6 @@
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
-      become: yes
 
     - name: Download and dearmor Docker GPG key
       shell: >
@@ -41,7 +43,6 @@
         | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
       args:
         creates: /etc/apt/keyrings/docker.gpg
-      become: yes
 
     - name: Add Docker apt repository
       apt_repository:
@@ -51,26 +52,24 @@
           {{ ansible_distribution_release }} stable
         state: present
         filename: docker
-      become: yes
 
     - name: Install Docker Engine and Compose plugin
       apt:
         name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
+          - "docker-ce={{ docker_version }}"
+          - "docker-ce-cli={{ docker_cli_ver }}"
+          - "containerd.io={{ containerd_ver }}"
+          - "docker-buildx-plugin={{ buildx_ver }}"
+          - "docker-compose-plugin={{ compose_ver }}"
         state: present
-        update_cache: yes
-      become: yes
+        cache_valid_time: 3600
+        allow_downgrade: yes                        # lets you roll back pins cleanly
 
     - name: Add vagrant user to docker group
       user:
         name: vagrant
         groups: docker
         append: yes
-      become: yes
 
     # ── Docker daemon: enable Prometheus metrics endpoint ───────────────────
 
@@ -85,8 +84,10 @@
         owner: root
         group: root
         mode: "0644"
-      become: yes
       notify: Restart Docker
+
+    - name: Flush handlers so daemon is live before downstream tasks
+      meta: flush_handlers 
 
     # ── Bind-mount data directories ─────────────────────────────────────────
     # The Makefile creates these at runtime, but pre-creating them with
@@ -104,16 +105,15 @@
         - /home/jaehylee/data
         - /home/jaehylee/data/db
         - /home/jaehylee/data/wp
-      become: yes
 
     # ── VM-internal hostname resolution ────────────────────────────────────
 
     - name: Add jaehylee.42.fr to VM /etc/hosts
       lineinfile:
         path: /etc/hosts
-        line: "127.0.0.1  jaehylee.42.fr"
+        line: "127.0.0.1  jaehylee.42.fr  # inception-ansible"
+        regexp: '^127\.0\.0\.1\s+jaehylee\.42\.fr'
         state: present
-      become: yes
 
     # ── Secrets ─────────────────────────────────────────────────────────────
     # These tasks run as vagrant (no become) so they write through the
@@ -127,6 +127,7 @@
         path: "{{ project_dir }}/srcs/secrets"
         state: directory
         mode: "0700"
+      become: no
 
     - name: Write default secret files (skipped if files already exist)
       copy:
@@ -148,6 +149,8 @@
         - { name: wp_user_email.txt,     value: user@42seoul.kr   }
         - { name: ftp_user.txt,          value: ftpuser           }
         - { name: ftp_password.txt,      value: changeme_ftp      }
+      become: no
+      no_log: true
 
   # ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -158,4 +161,3 @@
         name: docker
         state: restarted
         enabled: yes
-      become: yes
