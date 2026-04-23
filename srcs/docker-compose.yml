@@ -30,7 +30,7 @@ secrets:
 
 services:
   mariadb:
-    image: mariadb
+    image: mariadb:alpine3.22.4
     build:
       context: ./mariadb
     restart: unless-stopped
@@ -55,7 +55,7 @@ services:
       start_period: 30s
 
   redis:
-    image: redis
+    image: redis:alpine3.22.4
     build:
       context: ./redis
     restart: unless-stopped
@@ -77,10 +77,12 @@ services:
       start_period: 10s
 
   wordpress:
-    image: wordpress
+    image: wordpress:alpine3.22.4
     build:
       context: ./wordpress
     restart: unless-stopped
+    env_file:
+      - .env
     depends_on:
       mariadb:
         condition: service_healthy
@@ -109,10 +111,12 @@ services:
       start_period: 40s
 
   nginx:
-    image: nginx
+    image: nginx:alpine3.22.4
     build:
       context: ./nginx
     restart: unless-stopped
+    env_file:
+      - .env
     depends_on:
       wordpress:
         condition: service_healthy
@@ -134,10 +138,12 @@ services:
       start_period: 30s
 
   ftp:
-    image: ftp
+    image: ftp:alpine3.22.4
     build:
       context: ./ftp
     restart: unless-stopped
+    env_file:
+      - .env
     secrets:
       - ftp_user
       - ftp_password
@@ -156,7 +162,7 @@ services:
       start_period: 10s
 
   static:
-    image: static
+    image: static:alpine3.22.4
     build:
       context: ./static
     restart: unless-stopped
@@ -172,7 +178,7 @@ services:
       start_period: 10s
 
   adminer:
-    image: adminer
+    image: adminer:alpine3.22.4
     build:
       context: ./adminer
     restart: unless-stopped
@@ -191,7 +197,7 @@ services:
       start_period: 10s
 
   cadvisor:
-    image: cadvisor
+    image: cadvisor:alpine3.22.4
     build:
       context: ./cadvisor
     restart: unless-stopped
@@ -207,7 +213,7 @@ services:
       start_period: 10s
 
   monitoring:
-    image: monitoring
+    image: monitoring:alpine3.22.4
     build:
       context: ./monitoring
     restart: unless-stopped

@@ -10,6 +10,9 @@ read_secret() {
     tr -d '\r\n' < "$file"
 }
 
+# ── Validate required env (wired via env_file: .env) ────────────────────────
+: "${DOMAIN_NAME:?DOMAIN_NAME must be set (from .env)}"
+
 FTP_USER=$(read_secret /run/secrets/ftp_user)
 FTP_PASSWORD=$(read_secret /run/secrets/ftp_password)
 
@@ -18,6 +21,10 @@ if [ "$FTP_USER" = "root" ]; then
     echo "ERROR: FTP user cannot be root." >&2
     exit 1
 fi
+
+# ── Render vsftpd.conf from template on every start ─────────────────────────
+cp /etc/vsftpd/vsftpd.conf.template /etc/vsftpd/vsftpd.conf
+sed -i -e "s|__DOMAIN_NAME__|${DOMAIN_NAME}|g" /etc/vsftpd/vsftpd.conf
 
 # Create the FTP user if it does not exist
 if ! id "$FTP_USER" > /dev/null 2>&1; then

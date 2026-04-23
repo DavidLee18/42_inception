@@ -10,6 +10,16 @@ read_secret() {
     tr -d '\r\n' < "$file"
 }
 
+# ── Validate required env (wired via env_file: .env) ────────────────────────
+: "${DOMAIN_NAME:?DOMAIN_NAME must be set (from .env)}"
+: "${DB_HOST:?DB_HOST must be set (from .env)}"
+: "${DB_PORT:?DB_PORT must be set (from .env)}"
+: "${REDIS_HOST:?REDIS_HOST must be set (from .env)}"
+: "${REDIS_PORT:?REDIS_PORT must be set (from .env)}"
+: "${WP_TITLE:=Inception}"
+
+SITE_URL="https://${DOMAIN_NAME}"
+
 # ── Read all secrets ────────────────────────────────────────────────────────
 DB_NAME=$(read_secret /run/secrets/db_name)
 DB_USER=$(read_secret /run/secrets/db_user)
@@ -38,7 +48,7 @@ if [ ! -f /var/www/html/wp-config.php ]; then
 define('DB_NAME',     '${DB_NAME}');
 define('DB_USER',     '${DB_USER}');
 define('DB_PASSWORD', '${DB_PASSWORD}');
-define('DB_HOST',     'mariadb:3306');
+define('DB_HOST',     '${DB_HOST}:${DB_PORT}');
 define('DB_CHARSET',  'utf8mb4');
 define('DB_COLLATE',  '');
 
@@ -53,8 +63,8 @@ EOF
     # Part 3: Remaining config
     cat >> /var/www/html/wp-config.php <<EOF
 
-define('WP_REDIS_HOST',     'redis');
-define('WP_REDIS_PORT',     6379);
+define('WP_REDIS_HOST',     '${REDIS_HOST}');
+define('WP_REDIS_PORT',     ${REDIS_PORT});
 define('WP_REDIS_PASSWORD', '${REDIS_PASSWORD}');
 define('WP_REDIS_TIMEOUT',  1);
 define('WP_REDIS_DATABASE', 0);
@@ -65,8 +75,8 @@ define('WP_REDIS_DATABASE', 0);
 define('WP_DEBUG', true);
 define('WP_DEBUG_LOG', '/dev/stderr');
 define('WP_DEBUG_DISPLAY', false);
-define('WP_HOME',    'https://jaehylee.42.fr');
-define('WP_SITEURL', 'https://jaehylee.42.fr');
+define('WP_HOME',    '${SITE_URL}');
+define('WP_SITEURL', '${SITE_URL}');
 
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/');
@@ -80,8 +90,8 @@ EOF
 fi
 
 # ── Wait for MariaDB to be ready ────────────────────────────────────────────
-echo "Waiting for MariaDB..."
-until nc -z mariadb 3306 2>/dev/null; do
+echo "Waiting for MariaDB at ${DB_HOST}:${DB_PORT}..."
+until nc -z "${DB_HOST}" "${DB_PORT}" 2>/dev/null; do
     sleep 1
 done
 echo "MariaDB is up."
@@ -92,8 +102,8 @@ if ! wp core is-installed --allow-root --path=/var/www/html > /dev/null 2>&1; th
     wp core install \
         --allow-root \
         --path=/var/www/html \
-        --url="https://jaehylee.42.fr" \
-        --title="Inception" \
+        --url="${SITE_URL}" \
+        --title="${WP_TITLE}" \
         --admin_user="${WP_ADMIN_USER}" \
         --admin_password="${WP_ADMIN_PASSWORD}" \
         --admin_email="${WP_ADMIN_EMAIL}" \
