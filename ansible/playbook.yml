@@ -22,7 +22,7 @@
 
     - name: Install prerequisite packages
       apt:
-        name: [ca-certificates, curl, gnupg, make, git]
+        name: [ca-certificates, curl, gnupg, make, git, w3m]
         state: present
 
     - name: Set VM hostname
