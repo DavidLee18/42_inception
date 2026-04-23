@@ -85,8 +85,7 @@ if (!defined('ABSPATH')) {
 require_once ABSPATH . 'wp-settings.php';
 EOF
 
-    chown nobody:nobody /var/www/html/wp-config.php
-    chmod 640 /var/www/html/wp-config.php
+    chmod 644 /var/www/html/wp-config.php
 fi
 
 # ── Wait for MariaDB to be ready ────────────────────────────────────────────
