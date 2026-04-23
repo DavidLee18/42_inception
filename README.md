@@ -6,269 +6,160 @@
 
 ## Description
 
-Inception is a system administration project from the 42 curriculum. Its goal is to broaden knowledge of system administration by using **Docker** to set up a small but complete infrastructure composed of several services, all running inside a personal virtual machine.
+Inception is a system-administration project from the 42 curriculum. Its goal is to broaden knowledge of system administration by using **Docker** to set up a small but complete infrastructure composed of several services, all running inside a personal virtual machine.
 
-The project consists of nine containerised services orchestrated with **Docker Compose**, all built on **Alpine Linux 3.22.4**:
+The project consists of **nine containerised services** orchestrated with **Docker Compose**, every image built from scratch on **Alpine Linux 3.22.4**. The mandatory stack delivers a WordPress site served over **TLS 1.3 only** at `https://jaehylee.42.fr`, backed by MariaDB. The bonus stack adds caching, file transfer, a static showcase site, a database UI, and a full observability layer.
 
-| Service | Role |
-|---|---|
-| **nginx** | Reverse proxy, TLS 1.3 termination, static asset serving for WordPress |
-| **wordpress** | PHP-FPM application server running WordPress |
-| **mariadb** | Relational database backend for WordPress |
-| **redis** | In-memory object cache for WordPress |
-| **ftp** | vsftpd FTP server giving direct file access to the WordPress web root |
-| **static** | Standalone static resume/portfolio site built with a barbell-style pipeline |
-| **adminer** | Lightweight web-based database management UI |
-| **monitoring** | Prometheus + Grafana in a single container, monitoring all services via the Docker daemon metrics endpoint |
-| **cadvisor** | Lightweight custom metrics exporter that publishes per-container resource usage in Prometheus format |
+| # | Service | Role | Status |
+|---|---|---|---|
+| 1 | `nginx` | Reverse proxy; TLS 1.3 termination; only external entrypoint (port 443) | Mandatory |
+| 2 | `wordpress` | PHP-FPM + WP-CLI, application server for WordPress | Mandatory |
+| 3 | `mariadb` | Relational database backend | Mandatory |
+| 4 | `redis` | In-memory object cache for WordPress | Bonus |
+| 5 | `ftp` | `vsftpd` FTP server pointing at the WordPress volume | Bonus |
+| 6 | `static` | Standalone résumé site built via a multi-stage pipeline (CBQN + `sed`) | Bonus |
+| 7 | `adminer` | Lightweight web-based database management UI | Bonus |
+| 8 | `monitoring` | Prometheus + Grafana (supervisord), scraping Docker daemon metrics | Bonus (5th service) |
+| 9 | `cadvisor` | Custom Python Prometheus exporter for per-container metrics | Bonus (5th service) |
 
-The WordPress site is accessible at `https://jaehylee.42.fr` over **TLS 1.3 only**. All nine services share a single custom bridge network called `limbo`.
-
----
-
-## Main Design Choices
-
-### Virtual Machines vs Docker
-
-| | Virtual Machines | Docker |
-|---|---|---|
-| Isolation | Full OS-level isolation via hypervisor | Process-level isolation via Linux namespaces and cgroups |
-| Resource usage | Heavy — each VM carries its own kernel | Lightweight — containers share the host kernel |
-| Boot time | Minutes | Milliseconds |
-| Portability | Image files are large (GBs) | Images are layered and cache-friendly |
-| Use case | Full OS simulation, strong security boundaries | Microservices, reproducible environments |
-
-This project uses Docker because we need lightweight, reproducible, and composable service units — not full OS simulation. Each service runs in its own container, keeping responsibilities separated while remaining efficient.
-
-### Secrets vs Environment Variables
-
-| | Environment Variables | Docker Secrets |
-|---|---|---|
-| Visibility | Exposed in `docker inspect`, `/proc/<pid>/environ`, and shell history | Mounted as in-memory tmpfs files under `/run/secrets/`, invisible to `inspect` |
-| Risk surface | Any process in the container can read them; leaked in logs | Only accessible to services explicitly granted them |
-| Suitability | Non-sensitive config (hostnames, ports) | Passwords, tokens, private keys |
-
-This project uses **Docker Secrets** for all credentials (database passwords, WordPress accounts, Redis password, FTP credentials) and a **`.env` file** for non-sensitive configuration (domain name, service hostnames, ports). Each service's `entrypoint.sh` reads secret files at runtime so raw credentials never appear as environment variable values.
-
-### Docker Network vs Host Network
-
-| | Docker Network (bridge) | Host Network |
-|---|---|---|
-| Isolation | Containers communicate over a private virtual network | Containers share the host's network namespace directly |
-| Port exposure | Only explicitly published ports are reachable from outside | All container ports are immediately reachable from the host |
-| DNS | Docker provides automatic DNS resolution by service name | No container-level DNS; must use `localhost` or IPs |
-| Security | Strong: inter-service traffic is invisible to the host | Weak: no network boundary between container and host |
-
-All nine containers share a single custom bridge network named **`limbo`**. Only ports declared under `ports:` in `docker-compose.yml` are reachable from outside. The `monitoring` container uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint on the host machine without switching to host networking mode.
-
-### Docker Volumes vs Bind Mounts
-
-| | Docker Volumes | Bind Mounts |
-|---|---|---|
-| Managed by | Docker daemon | Host filesystem path |
-| Portability | Fully portable; no host path dependency | Tied to the host directory structure |
-| Performance | Optimised by Docker | Direct host I/O |
-| Backup | Via `docker volume` commands | Direct filesystem access |
-| Typical use | Persistent data (databases, uploads) | Development (live code reload) |
-
-This project uses both **named Docker Volumes**(`redis_data`, `prometheus_data`, `grafana_data`) and **Bind Mounts**(`db_data`, `wp_data`). The Bind Mounts are only used because it was required by the subject.
+All nine containers share a single custom bridge network named **`limbo`**.
 
 ---
 
 ## Instructions
 
-### Option A — Automated (Vagrant + Ansible, recommended for evaluations)
+### Option A — Automated (Vagrant + Ansible, recommended for evaluation)
 
-**Prerequisites:** [VirtualBox](https://www.virtualbox.org/) and [Vagrant](https://www.vagrantup.com/) installed on the host.
+**Prerequisites on the host machine:**
 
-```bash
+- [VirtualBox](https://www.virtualbox.org/)
+- [Vagrant](https://www.vagrantup.com/)
+
+**From the repository root:**
+
+```zsh
 git clone https://github.com/DavidLee18/42_inception.git
 cd 42_inception
-vagrant up          # creates VM, installs Docker, writes default secrets
-```
-
-On first `vagrant up`, Ansible automatically:
-- installs Docker Engine and the Compose plugin
-- enables the Docker daemon Prometheus metrics endpoint
-- creates the bind-mount directories at `/home/jaehylee/data/`
-- adds `jaehylee.42.fr → 127.0.0.1` inside the VM
-- writes default secrets to `srcs/secrets/` (skipped if files already exist)
-
-Add the domain to your **host** machine's `/etc/hosts` so the browser resolves it:
-
-```bash
-echo "192.168.56.10  jaehylee.42.fr" | sudo tee -a /etc/hosts
-```
-
-Then SSH in and start the project:
-
-```bash
-vagrant ssh
+make vm      # vagrant up — provisions Docker + writes default secrets
+make vm-ssh  # SSH into the VM
 cd /vagrant && make
 ```
 
-To start a completely fresh evaluation session:
+On first `vagrant up`, the Ansible playbook (`ansible/playbook.yml`) idempotently:
 
-```bash
-vagrant destroy -f && vagrant up
+- installs Docker Engine and the Compose plugin,
+- enables the Docker daemon Prometheus metrics endpoint on `:9323`,
+- creates the bind-mount data directories under `/home/jaehylee/data/`,
+- registers `jaehylee.42.fr → 127.0.0.1` inside the VM's `/etc/hosts`,
+- writes default secrets to `srcs/secrets/` (skipped if the files already exist).
+
+**Accessing the services from the cluster PC** — port forwarding is configured in the `Vagrantfile`, mapping cluster-PC loopback ports to VM-internal ports (TCP only, `127.0.0.1`-bound):
+
+| Cluster PC URL | Guest port | Service |
+|---|---|---|
+| `https://jaehylee.42.fr:8443` | 443 | WordPress (nginx) |
+| `http://localhost:8080` | 8080 | Static site |
+| `http://localhost:8081` | 8081 | Adminer |
+| `http://localhost:9090` | 9090 | Prometheus |
+| `http://localhost:3000` | 3000 | Grafana |
+| `ftp://localhost:2121` | 21 | FTP (control) |
+
+Domain resolution options on the cluster PC, without `sudo`:
+
+```zsh
+# Firefox only (most reliable, per-profile):
+echo 'user_pref("network.dns.localDomains","jaehylee.42.fr");' \
+    >> ~/.mozilla/firefox/*.default*/user.js
+
+# Or shell-wide via HOSTALIASES:
+echo 'jaehylee.42.fr localhost' > ~/.hosts
+echo 'export HOSTALIASES=$HOME/.hosts' >> ~/.zshrc
+exec zsh -l
 ```
 
-> Default secrets (`changeme_*`) are in `srcs/secrets/`. Edit them before the
-> evaluation if you want non-default credentials — re-provisioning will not
-> overwrite them.
+To wipe everything and start fresh:
 
----
+```zsh
+make vm-destroy && make vm
+```
 
 ### Option B — Manual (bare metal or existing VM)
 
-#### Prerequisites
+**Prerequisites:** Docker Engine ≥ 24, the Docker Compose plugin, `make`.
 
-- Docker Engine ≥ 24
-- Docker Compose plugin (`docker compose`)
-- `make`
+1. Clone the repository and `cd` into it.
+2. Enable the Docker daemon Prometheus metrics endpoint — add the following to `/etc/docker/daemon.json` and restart Docker:
+   ```json
+   { "metrics-addr": "0.0.0.0:9323", "experimental": true }
+   ```
+3. Create the thirteen secret files under `srcs/secrets/` (see `DEV_DOC.md` for the complete list and constraints).
+4. Add `jaehylee.42.fr 127.0.0.1` to `/etc/hosts`.
+5. Run `make` from the repository root.
 
-#### 1. Clone the repository
+Stop and clean up:
 
-```bash
-git clone https://github.com/DavidLee18/42_inception.git
-cd 42_inception
-```
-
-#### 2. Enable Docker daemon metrics
-
-Add to `/etc/docker/daemon.json` and restart Docker:
-
-```json
-{
-  "metrics-addr": "0.0.0.0:9323",
-  "experimental": true
-}
-```
-
-```bash
-sudo systemctl restart docker
-```
-
-#### 3. Create the `.env` file
-
-```bash
-cat > srcs/.env <<'EOF'
-DOMAIN_NAME=jaehylee.42.fr
-WORDPRESS_DB_HOST=mariadb:3306
-DB_HOST=mariadb
-DB_PORT=3306
-REDIS_HOST=redis
-REDIS_PORT=6379
-DOCKER_METRICS_HOST=host.docker.internal:9323
-EOF
-```
-
-#### 4. Create the secrets
-
-```bash
-mkdir -p srcs/secrets
-echo "strongrootpassword"   > srcs/secrets/db_root_password.txt
-echo "wordpress"            > srcs/secrets/db_name.txt
-echo "wpuser"               > srcs/secrets/db_user.txt
-echo "strongwppassword"     > srcs/secrets/db_password.txt
-echo "strongredispassword"  > srcs/secrets/redis_password.txt
-echo "jaehylee"             > srcs/secrets/wp_admin_user.txt
-echo "strongadminpassword"  > srcs/secrets/wp_admin_password.txt
-echo "jaehylee@42seoul.kr"  > srcs/secrets/wp_admin_email.txt
-echo "subscriber1"          > srcs/secrets/wp_user.txt
-echo "stronguserpassword"   > srcs/secrets/wp_user_password.txt
-echo "user@42seoul.kr"      > srcs/secrets/wp_user_email.txt
-echo "ftpuser"              > srcs/secrets/ftp_user.txt
-echo "strongftppassword"    > srcs/secrets/ftp_password.txt
-```
-
-> **Constraint:** the WordPress admin username must not contain `admin` (case-insensitive).
-
-#### 5. Add the domain to your hosts file
-
-```bash
-echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
-```
-
-#### 6. Build and start
-
-```bash
-make
-```
-
-### Stop and clean up
-
-```bash
-# Stop containers (preserves volumes)
-make down
-
-# Stop containers and erase all data
-make fclean
+```zsh
+make down    # stop containers, preserve volumes
+make fclean  # stop containers and erase all data
 ```
 
 ---
 
-## Project Structure
+## Project Description
 
-```
-.
-├── Makefile
-├── Vagrantfile                  # VM definition (VirtualBox, 4 GB RAM, 2 CPUs)
-├── ansible/
-│   └── playbook.yml             # idempotent provisioning: Docker, daemon, secrets, hosts
-└── srcs/
-    ├── secrets/                     # 13 secret files — never committed to Git
-    ├── .env                         # Non-sensitive config (domain, hostnames, ports)
-    ├── docker-compose.yml
-    ├── nginx/
-    │   ├── Dockerfile               # Alpine 3.22.4, openssl, nginx
-    │   └── nginx.conf               # TLS 1.3, FastCGI to wordpress:9000
-    ├── mariadb/
-    │   ├── Dockerfile               # Alpine 3.22.4, mariadb
-    │   ├── my.cnf                   # utf8mb4, bind 0.0.0.0
-    │   └── entrypoint.sh            # reads secrets, runs mariadb-install-db once
-    ├── wordpress/
-    │   ├── Dockerfile               # Alpine 3.22.4, php83-fpm, wp-cli
-    │   ├── php-fpm.conf             # listen 0.0.0.0:9000
-    │   └── entrypoint.sh            # reads secrets, writes wp-config.php, wp core install
-    ├── redis/
-    │   ├── Dockerfile               # Alpine 3.22.4, redis
-    │   ├── redis.conf               # allkeys-lru, maxmemory 128mb, dangerous cmds disabled
-    │   └── entrypoint.sh            # reads secret, passes --requirepass
-    ├── ftp/
-    │   ├── Dockerfile               # Alpine 3.22.4, vsftpd
-    │   ├── vsftpd.conf              # passive mode 21100-21110, chroot jail
-    │   └── entrypoint.sh            # reads secrets, sed-substitutes pasv_address, creates FTP user
-    ├── static/
-    │   ├── Dockerfile               # multi-stage: Alpine 3.22.4 CBQN builder + Alpine 3.22.4 nginx
-    │   ├── nginx.conf               # listens on 8080
-    │   ├── template.bqn             # BQN template engine script
-    │   └── site/
-    │       ├── template.html
-    │       ├── style.css
-    │       └── *.bar                # template variable files
-    ├── adminer/
-    │   ├── Dockerfile               # Alpine 3.22.4, php83-fpm, nginx, adminer single file
-    │   ├── nginx.conf               # listens on 8081, IP allowlist for private ranges
-    │   └── php-fpm.conf             # listen 127.0.0.1:9001
-    ├── monitoring/
-    │   ├── Dockerfile               # Alpine 3.22.4, prometheus, grafana, supervisor
-    │   ├── entrypoint.sh            # sed-substitutes prometheus.yml, then execs supervisord
-    │   ├── supervisord.conf         # manages prometheus + grafana as child processes
-    │   ├── prometheus.yml           # scrapes docker daemon, cadvisor, and self
-    │   └── grafana/
-    │       ├── provisioning/
-    │       │   ├── datasources/
-    │       │   │   └── prometheus.yml   # auto-wires Prometheus as default datasource
-    │       │   └── dashboards/
-    │       │       └── dashboard.yml    # tells Grafana where to load dashboard JSON from
-    │       └── dashboards/
-    │           ├── docker.json          # pre-built Docker container metrics dashboard
-    │           └── prometheus.json      # Prometheus self-monitoring dashboard
-    └── cadvisor/
-        ├── Dockerfile               # Alpine 3.22.4, Python 3
-        └── exporter.py              # custom Prometheus metrics exporter
-```
+### Docker usage and sources
+
+The project uses Docker Compose to orchestrate nine services, each defined by its own Dockerfile under `srcs/<service>/`. All images derive from `alpine:3.22.4` — the penultimate stable Alpine branch at the time of writing, as required by the subject. No pre-built images are pulled from any registry other than the permitted Alpine base. Every image is pinned to the tag `<service>:alpine3.22.4`; no `:latest` tag appears anywhere in the stack.
+
+Non-sensitive configuration lives in `srcs/.env` (committed) and is wired into the compose file via `env_file:`. All credentials live in `srcs/secrets/` (gitignored) and are mounted into containers as Docker Secrets. Each service's `entrypoint.sh` reads its secret files from `/run/secrets/` at runtime, so raw credentials never appear as environment variable values, in `docker inspect`, in process environments, or anywhere in image layers.
+
+### Main design comparisons
+
+#### Virtual Machines vs Docker
+
+| | Virtual Machines | Docker |
+|---|---|---|
+| Isolation | Full OS-level isolation via hypervisor | Process-level isolation via Linux namespaces and cgroups |
+| Resource cost | Heavy — each VM carries its own kernel | Lightweight — containers share the host kernel |
+| Start-up time | Tens of seconds to minutes | Milliseconds to a few seconds |
+| Image size | Typically gigabytes | Layered; tens to hundreds of megabytes |
+| Primary use case | Full OS simulation; strong security boundaries; running non-Linux guests | Reproducible microservices; CI/CD; immutable infrastructure |
+
+This project uses Docker because the requirement is to compose multiple co-operating services reproducibly — not to simulate full operating systems. Each service runs in its own container, keeping responsibilities separated while remaining efficient.
+
+#### Secrets vs Environment Variables
+
+| | Environment Variables | Docker Secrets |
+|---|---|---|
+| Storage | Set in the process environment | Mounted as tmpfs files under `/run/secrets/` |
+| Visibility | Visible in `docker inspect`, `/proc/<pid>/environ`, image history if baked in | Only readable by processes inside the container granted access |
+| Risk surface | Leak through logs, crash dumps, child processes | Confined to the container filesystem at runtime |
+| Suitable for | Non-sensitive config (hostnames, ports, feature flags) | Passwords, tokens, private keys, certificates |
+
+This project uses **Docker Secrets** for all thirteen credentials (DB, WordPress, Redis, FTP) and the **`srcs/.env` file** only for non-sensitive configuration (domain name, service hostnames, ports, site title).
+
+#### Docker Network vs Host Network
+
+| | Docker Network (bridge) | Host Network |
+|---|---|---|
+| Isolation | Containers communicate over a private virtual network | Containers share the host's network namespace directly |
+| Port exposure | Only explicitly published ports are reachable from outside | Every container port is immediately reachable from the host |
+| DNS | Compose provides automatic service-name resolution | No container-level DNS; must use `localhost` or fixed IPs |
+| Security | Strong — inter-service traffic is invisible to the host | Weak — no network boundary between container and host |
+
+All nine containers share a single custom bridge network, `limbo`. `nginx` is the sole external entrypoint on port 443, satisfying the subject's requirement. The `monitoring` container uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint on the host without switching to host networking.
+
+#### Docker Volumes vs Bind Mounts
+
+| | Docker Volumes | Bind Mounts |
+|---|---|---|
+| Managed by | Docker daemon | Host filesystem path |
+| Portability | Fully portable; no host-path dependency | Tied to a specific host directory |
+| Performance | Optimised by Docker; volume driver chosen by user | Direct host I/O |
+| Backup | Via `docker volume` commands | Direct filesystem access |
+| Typical use | Persistent state that doesn't need host visibility | Host–container file sharing; development |
+
+This project uses **both**. `db_data` and `wp_data` are bind mounts under `/home/jaehylee/data/`, as required by the subject (*"Your volumes will be available in the `/home/login/data` folder of the host machine using Docker"*). `redis_data`, `prometheus_data`, and `grafana_data` are named Docker volumes because they don't need host-side visibility.
 
 ---
 
@@ -277,49 +168,41 @@ make fclean
 ### Documentation
 
 - [Docker official documentation](https://docs.docker.com/)
-- [Docker Compose file reference](https://docs.docker.com/compose/compose-file/)
-- [Docker Secrets documentation](https://docs.docker.com/engine/swarm/secrets/)
-- [nginx documentation](https://nginx.org/en/docs/)
-- [nginx `fastcgi_params` and PHP-FPM](https://nginx.org/en/docs/http/ngx_http_fastcgi_module.html)
+- [Docker Compose file reference](https://docs.docker.com/reference/compose-file/)
+- [Docker Secrets](https://docs.docker.com/engine/swarm/secrets/)
+- [Docker daemon metrics endpoint](https://docs.docker.com/engine/daemon/prometheus/)
+- [Best practices for writing Dockerfiles](https://docs.docker.com/build/building/best-practices/)
 - [Alpine Linux package index](https://pkgs.alpinelinux.org/packages)
-- [WordPress `wp-config.php` documentation](https://developer.wordpress.org/apis/wp-config-php/)
+- [nginx documentation](https://nginx.org/en/docs/)
+- [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
+- [WordPress `wp-config.php` reference](https://developer.wordpress.org/apis/wp-config-php/)
 - [WP-CLI documentation](https://wp-cli.org/)
-- [MariaDB documentation](https://mariadb.com/kb/en/documentation/)
-- [Redis configuration documentation](https://redis.io/docs/management/config/)
-- [Redis eviction policies](https://redis.io/docs/reference/eviction/)
-- [vsftpd manual](https://security.appspot.com/vsftpd/vsftpd_conf.html)
-- [Adminer documentation](https://www.adminer.org/)
+- [MariaDB Knowledge Base](https://mariadb.com/kb/en/documentation/)
+- [Redis configuration](https://redis.io/docs/latest/operate/oss_and_stack/management/config/)
+- [vsftpd configuration manual](https://security.appspot.com/vsftpd/vsftpd_conf.html)
+- [Adminer](https://www.adminer.org/)
 - [barbell — BQN template engine](https://github.com/jhvst/barbell)
 - [Prometheus documentation](https://prometheus.io/docs/introduction/overview/)
-- [Grafana documentation](https://grafana.com/docs/)
 - [Grafana provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/)
-- [Docker daemon metrics](https://docs.docker.com/config/daemon/prometheus/)
-- [OpenSSL TLS 1.3 overview](https://www.openssl.org/blog/blog/2018/09/11/release111/)
-- [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
-- [HSTS — HTTP Strict Transport Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)
+- [Vagrant documentation](https://developer.hashicorp.com/vagrant/docs)
+- [Ansible documentation](https://docs.ansible.com/)
 
-### Articles & Tutorials
+### Articles and background reading
 
-- [Docker networking overview](https://docs.docker.com/network/)
-- [Best practices for writing Dockerfiles](https://docs.docker.com/develop/develop-images/dockerfile_best-practices/)
-- [Manage sensitive data with Docker secrets](https://docs.docker.com/engine/swarm/secrets/)
-- [PHP-FPM configuration guide](https://www.php.net/manual/en/install.fpm.configuration.php)
-- [TLS 1.3 — What's New](https://www.ietf.org/blog/tls13/)
-- [vsftpd and passive mode FTP](https://wiki.alpinelinux.org/wiki/FTP)
-- [Prometheus scrape configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
+- [TLS 1.3 — What's New (IETF)](https://www.ietf.org/blog/tls13/)
+- [HSTS — HTTP Strict Transport Security (MDN)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)
+- [PID 1 inside containers](https://petermalmgren.com/signal-handling-docker/)
+- [OverlayFS — the Linux kernel documentation](https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html)
 
-### AI Usage
+### AI usage
 
-**Claude (Anthropic)** was used as an assistant throughout this project for the following tasks:
+**Claude (Anthropic)** was used as an assistant throughout the project. Specifically, AI helped with:
 
-- **Dockerfile generation** — producing Alpine 3.22.4-based Dockerfiles for all nine services, including multi-stage builds (static site), supervisord-based process management (monitoring), and per-service entrypoint scripts.
-- **docker-compose.yml structure** — defining multi-service orchestration, the unified `limbo` bridge network, named volumes, `extra_hosts` for host metrics access, and secret injection patterns across all services.
-- **Docker Secrets integration** — designing consistent `entrypoint.sh` scripts that read secret files at runtime so raw credentials never appear as environment variable values.
-- **`.env` integration** — extracting all non-sensitive hardcoded values (domain name, service hostnames, ports) into `srcs/.env` and wiring them through `docker-compose.yml` and entrypoint scripts via runtime `sed` substitution.
-- **nginx configuration** — TLS 1.3-only enforcement, HTTP→HTTPS redirect, FastCGI proxying to PHP-FPM, static asset caching, and security headers including HSTS.
-- **WordPress automation** — using WP-CLI in the WordPress entrypoint to fully install WordPress, create admin and subscriber accounts, and enable the Redis object cache plugin without any browser interaction.
-- **Static site pipeline** — replicating the barbell template mechanic using the CBQN interpreter and a BQN template script inside a multi-stage Alpine build.
-- **Monitoring stack** — configuring Prometheus to scrape the Docker daemon metrics endpoint, provisioning Grafana with a datasource and two dashboards (Docker containers and Prometheus self-monitoring) automatically at startup, and wiring both processes under supervisord.
-- **Documentation** — drafting and structuring this README, USER_DOC.md, and DEV_DOC.md.
+- Drafting and reviewing the nine Dockerfiles, including the multi-stage `static` build and the supervisord-managed `monitoring` image.
+- Designing the `docker-compose.yml` file: secret injection, `env_file:` wiring, healthchecks, `depends_on` ordering, bind-mount declarations, and the `extra_hosts: host-gateway` pattern.
+- Writing per-service `entrypoint.sh` scripts that read secrets from `/run/secrets/` and template configuration files at runtime from `.env`-sourced variables.
+- Configuring nginx (TLS 1.3-only, FastCGI to PHP-FPM, security headers), WordPress via WP-CLI (one-shot core install, admin/subscriber user creation, Redis-cache plugin activation), MariaDB bootstrap SQL, `vsftpd` passive-mode setup, and the Prometheus + Grafana provisioning layout.
+- Authoring this `README.md`, `USER_DOC.md`, and `DEV_DOC.md`.
+- Auditing the repository against the subject requirements and drafting remediation patches.
 
-AI was used as a productivity and reference tool. All generated output was reviewed, understood, and validated before being included in the project.
+Every AI-generated artefact was read, understood, and tested before being committed. No code, configuration, or documentation was included that could not be explained by the author at evaluation time.

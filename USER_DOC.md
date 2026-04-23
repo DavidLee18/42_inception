@@ -1,246 +1,211 @@
-# User Documentation — Inception
+# User Documentation
 
-## Overview of Services
+This document is for end users and administrators of the Inception stack. For developer-facing documentation (how to modify the project from source), see `DEV_DOC.md`.
 
-The Inception stack provides the following services:
+---
 
-| Service | URL / Address | Purpose |
+## 1. What the stack provides
+
+Nine services run simultaneously, all orchestrated by Docker Compose from a single VM:
+
+| Service | What it does | How you reach it |
 |---|---|---|
-| **WordPress** | `https://jaehylee.42.fr` | Main website |
-| **WordPress Admin** | `https://jaehylee.42.fr/wp-admin` | CMS administration panel |
-| **Adminer** | `http://jaehylee.42.fr:8081` | Database management UI |
-| **Static site** | `http://jaehylee.42.fr:8080` | Portfolio / resume site |
-| **Grafana** | `http://jaehylee.42.fr:3000` | Container monitoring dashboards |
-| **Prometheus** | `http://jaehylee.42.fr:9090` | Raw metrics and scrape target status |
-| **FTP** | `jaehylee.42.fr:21` | Direct file access to WordPress web root |
+| **nginx** | Reverse proxy; handles TLS 1.3 termination; the only externally reachable service | `https://jaehylee.42.fr:8443` |
+| **wordpress** | Runs the WordPress site via PHP-FPM | accessed via nginx |
+| **mariadb** | Stores WordPress data | internal only |
+| **redis** | Object cache for WordPress; reduces DB load | internal only |
+| **ftp** | File transfer access to the WordPress web root | `ftp://localhost:2121` (passive, 21100–21110) |
+| **static** | Standalone résumé / showcase site | `http://localhost:8080` |
+| **adminer** | Web-based MariaDB management UI (restricted to private IP ranges) | `http://localhost:8081` |
+| **monitoring** | Prometheus metrics scraping + Grafana dashboards | `http://localhost:9090` (Prometheus), `http://localhost:3000` (Grafana) |
+| **cadvisor** | Custom exporter publishing per-container resource metrics to Prometheus | internal only |
 
-MariaDB (3306) and Redis (6379) are internal only — not reachable from outside the stack.
-
----
-
-## Starting and Stopping the Project
-
-### Start everything
-
-```bash
-make
-```
-
-This builds all images from scratch and starts all containers in detached mode. On first run, WordPress installation runs automatically — no browser interaction needed.
-
-### Stop containers (preserve data)
-
-```bash
-make down
-```
-
-All volumes are preserved. Restarting with `make` resumes exactly where you left off.
-
-### Stop and erase all data
-
-```bash
-make fclean
-```
-
-This removes all containers, images, and volumes. The next `make` performs a full rebuild from scratch.
-
-### Full rebuild
-
-```bash
-make re
-```
-
-Equivalent to `make fclean && make`.
+All inter-service traffic flows over a single Docker bridge network, `limbo`. Nothing except `nginx` (mapped to VM port 443) is required to be exposed externally per the subject; the other ports exist to support bonus services and the monitoring stack.
 
 ---
 
-## Accessing the Website
+## 2. Starting and stopping the project
 
-Navigate to `https://jaehylee.42.fr` in your browser. Because the TLS certificate is self-signed, your browser will display a security warning — this is expected. Proceed past it.
+All of the following commands are run **from the repository root** on the host machine.
 
-The site uses **TLS 1.3 only**. Port 80 is not published to the host — connect directly via `https://jaehylee.42.fr`.
-
----
-
-## Accessing the WordPress Admin Panel
-
-Go to `https://jaehylee.42.fr/wp-admin` and log in with the administrator credentials from `srcs/secrets/wp_admin_user.txt` and `srcs/secrets/wp_admin_password.txt`.
-
----
-
-## Accessing Adminer (Database UI)
-
-Adminer is available at `http://jaehylee.42.fr:8081`.
-
-> **Note:** Adminer is restricted to private IP ranges only (10.x.x.x, 172.16–31.x.x, 192.168.x.x). It is not accessible from the public internet.
-
-Use the following connection details:
-
-| Field | Value |
+| Action | Command |
 |---|---|
-| System | MySQL |
-| Server | `mariadb` |
-| Username | contents of `srcs/secrets/db_user.txt` |
-| Password | contents of `srcs/secrets/db_password.txt` |
-| Database | contents of `srcs/secrets/db_name.txt` |
+| Start the VM (first time or after `vm-destroy`) | `make vm` |
+| SSH into the VM | `make vm-ssh` |
+| Build and start the Docker stack (inside the VM) | `cd /vagrant && make` |
+| Stop the stack (preserves data) | `make down` (inside the VM) |
+| Stop the stack and erase all data | `make fclean` (inside the VM) |
+| Rebuild from scratch | `make re` (inside the VM) |
+| Destroy the VM entirely | `make vm-destroy` (on the host) |
+
+A typical start-to-finish session looks like:
+
+```zsh
+make vm
+make vm-ssh
+# now inside the VM
+cd /vagrant && make
+# … use the services …
+exit
+```
+
+To fully reset everything:
+
+```zsh
+make vm-destroy && make vm && make vm-ssh
+cd /vagrant && make
+```
 
 ---
 
-## Accessing Grafana (Monitoring)
+## 3. Accessing the website and administration panel
 
-Navigate to `http://jaehylee.42.fr:3000`.
+### WordPress site
 
-On first login, use the default Grafana credentials (`admin` / `admin`) and set a new password when prompted.
+Open `https://jaehylee.42.fr:8443` in a browser. The certificate is self-signed, so the browser will warn; accept the warning to continue.
 
-Two dashboards are pre-loaded automatically:
+If `jaehylee.42.fr` does not resolve on your machine, one of the following options works without `sudo`:
 
-- **Docker Containers** — per-container CPU, memory, network I/O, and block I/O in real time.
-- **Prometheus 2.0 Overview** — Prometheus self-monitoring: scrape durations, TSDB head series, target health.
+```zsh
+# Firefox only (per-profile, most reliable):
+echo 'user_pref("network.dns.localDomains","jaehylee.42.fr");' \
+    >> ~/.mozilla/firefox/*.default*/user.js
 
-No manual setup is needed for either dashboard.
-
-### Prometheus (raw metrics)
-
+# Shell-wide (curl + most glibc clients):
+echo 'jaehylee.42.fr localhost' > ~/.hosts
+echo 'export HOSTALIASES=$HOME/.hosts' >> ~/.zshrc
+exec zsh -l
 ```
-http://jaehylee.42.fr:9090
-```
 
-No login required. Use this to run ad-hoc PromQL queries or verify that scrape targets are healthy via **Status → Targets**.
+### WordPress administration panel
+
+Navigate to `https://jaehylee.42.fr:8443/wp-admin`. Log in using the administrator credentials (see §4). Two WordPress accounts are created at first launch:
+
+- **Administrator** — username stored in `srcs/secrets/wp_admin_user.txt`. Per the subject, this username must not contain the substring `admin` in any casing; the `wordpress` entrypoint script enforces this at start-up.
+- **Subscriber** — username stored in `srcs/secrets/wp_user.txt`.
+
+### Adminer (database UI)
+
+Navigate to `http://localhost:8081`. Use the credentials from `srcs/secrets/db_user.txt` and `srcs/secrets/db_password.txt`, server `mariadb`, database `wordpress`.
+
+Access to Adminer is restricted to private IP ranges (`127.0.0.1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) at the nginx layer, so it is not reachable from the public internet.
+
+### Grafana (monitoring dashboards)
+
+Navigate to `http://localhost:3000`. Default credentials are `admin` / `admin`; Grafana will prompt you to change the password on first login. Two dashboards are pre-provisioned: **Docker** (per-container resource usage via cAdvisor) and **Prometheus** (self-monitoring).
+
+### FTP
+
+Connect with any FTP client to `localhost:2121` in passive mode. Credentials are in `srcs/secrets/ftp_user.txt` and `srcs/secrets/ftp_password.txt`. The user is chrooted to `/var/www/html` — the WordPress web root.
 
 ---
 
-## Locating and Managing Credentials
+## 4. Locating and managing credentials
 
-All sensitive credentials are stored as plain text files inside the `srcs/secrets/` directory. These files are never committed to Git.
+### Where credentials live
 
-```
-srcs/secrets/
-├── db_root_password.txt    ← MariaDB root password
-├── db_name.txt             ← WordPress database name
-├── db_user.txt             ← WordPress database user
-├── db_password.txt         ← WordPress database user password
-├── redis_password.txt      ← Redis authentication password
-├── wp_admin_user.txt       ← WordPress administrator username
-├── wp_admin_password.txt   ← WordPress administrator password
-├── wp_admin_email.txt      ← WordPress administrator email
-├── wp_user.txt             ← WordPress subscriber username
-├── wp_user_password.txt    ← WordPress subscriber password
-├── wp_user_email.txt       ← WordPress subscriber email
-├── ftp_user.txt            ← FTP username
-└── ftp_password.txt        ← FTP password
-```
+All thirteen credentials live as individual plain-text files under `srcs/secrets/`. This directory is gitignored; credentials are never committed to Git.
 
-Non-sensitive configuration (domain name, service hostnames, ports) lives in `srcs/.env`:
+| File | Purpose |
+|---|---|
+| `db_root_password.txt` | MariaDB `root` password |
+| `db_name.txt` | WordPress database name |
+| `db_user.txt` | WordPress database user |
+| `db_password.txt` | WordPress database user password |
+| `redis_password.txt` | Redis `AUTH` password |
+| `wp_admin_user.txt` | WordPress administrator username (must not contain `admin`) |
+| `wp_admin_password.txt` | WordPress administrator password |
+| `wp_admin_email.txt` | WordPress administrator email |
+| `wp_user.txt` | WordPress subscriber username |
+| `wp_user_password.txt` | WordPress subscriber password |
+| `wp_user_email.txt` | WordPress subscriber email |
+| `ftp_user.txt` | FTP username (must not be `root`) |
+| `ftp_password.txt` | FTP user password |
 
-```
-srcs/.env
-├── DOMAIN_NAME             ← e.g. jaehylee.42.fr
-├── WORDPRESS_DB_HOST       ← e.g. mariadb:3306
-├── DB_HOST                 ← e.g. mariadb
-├── DB_PORT                 ← e.g. 3306
-├── REDIS_HOST              ← e.g. redis
-├── REDIS_PORT              ← e.g. 6379
-└── DOCKER_METRICS_HOST     ← e.g. host-gateway:9323
-```
+### Default values
 
-> The monitoring stack (Prometheus + Grafana) requires no secrets — Prometheus scrapes the Docker daemon's unauthenticated local metrics endpoint, and Grafana's default credentials are set through its first-login flow.
+When the VM is first provisioned, the Ansible playbook writes default values of the form `changeme_*` to any secret file that does not already exist. Existing files are never overwritten (`force: no`), so edits survive re-provisioning.
 
-### Changing a credential
+### Changing credentials
 
-1. Edit the relevant file in `srcs/secrets/`.
-2. Restart the affected container:
+1. Edit the relevant file under `srcs/secrets/` on the host (or directly in the VM at `/vagrant/srcs/secrets/`).
+2. Run `make fclean && make` inside the VM to rebuild with the new values.
 
-```bash
-docker compose restart <service>
-```
+Note: once WordPress has been installed, changing `wp_admin_*` / `wp_user_*` files only affects accounts created at first launch. Post-launch changes must be made through the WordPress admin UI or via `wp user update` inside the `wordpress` container.
 
-> Changing a database or WordPress credential after first boot may require manual updates inside the database, or a full wipe and rebuild with `make fclean && make`.
+### Rotating the root DB password
+
+The MariaDB entrypoint uses a marker file (`/var/lib/mariadb/.init_complete`) to detect first-run initialisation. After a successful first run, the root password is already set inside the database and is not re-applied on subsequent starts. To rotate it, either delete the bind-mount directory and rebuild (`make fclean && make`), or update the password manually via `mariadb` inside the container.
 
 ---
 
-## Checking That Services Are Running Correctly
+## 5. Checking that services are running correctly
 
-### Quick status overview
+### Quick overall view
 
-```bash
-docker compose ps
+Run inside the VM:
+
+```zsh
+cd /vagrant
+docker compose -f srcs/docker-compose.yml ps
 ```
 
-All nine services should show `running` in the Status column.
+Each service shows a health status: `healthy`, `starting`, or `unhealthy`. The stack is fully up when all nine services report `healthy`.
 
-### View live logs
+### Per-service health-check endpoints
 
-```bash
-# All services at once
-docker compose logs -f
+Every container has a Docker-native healthcheck defined in `docker-compose.yml`. A summary:
 
-# One service at a time
-docker compose logs -f nginx
-docker compose logs -f wordpress
-docker compose logs -f mariadb
-docker compose logs -f redis
-docker compose logs -f monitoring
+| Service | Check |
+|---|---|
+| `mariadb` | `mariadb-admin ping` with the root password |
+| `redis` | `redis-cli ping` with the Redis password |
+| `wordpress` | `php-fpm83 -t` plus TCP probe on `127.0.0.1:9000` |
+| `nginx` | HTTPS GET on `127.0.0.1:443` |
+| `ftp` | TCP probe on `127.0.0.1:21` |
+| `static` | HTTP GET on `127.0.0.1:8080` |
+| `adminer` | HTTP GET on `127.0.0.1:8081` |
+| `monitoring` | HTTP GET on Prometheus `/-/healthy` and Grafana `/api/health` |
+| `cadvisor` | HTTP GET on `127.0.0.1:8080/metrics` |
+
+### Reading logs
+
+```zsh
+# follow logs from all services
+docker compose -f srcs/docker-compose.yml logs -f
+
+# just one service
+docker compose -f srcs/docker-compose.yml logs -f wordpress
 ```
 
-Press `Ctrl+C` to stop following logs.
+### Verifying TLS
 
-### Check HTTPS and TLS version
+From the VM or the cluster PC:
 
-```bash
-curl -vk https://jaehylee.42.fr 2>&1 | grep "SSL connection\|TLSv"
+```zsh
+openssl s_client -connect jaehylee.42.fr:8443 -tls1_3 -servername jaehylee.42.fr </dev/null 2>/dev/null | grep -E 'Protocol|Cipher'
 ```
 
-Expected output contains `TLSv1.3`.
+Expected: `Protocol: TLSv1.3`. TLS 1.2 connection attempts (`-tls1_2`) should fail, as the subject requires.
 
-### Check the database is alive
+### Verifying the Redis cache is active
 
-```bash
-docker compose exec mariadb mysqladmin \
-    --socket=/run/mariadbd/mariadbd.sock ping
+From inside the WordPress container:
+
+```zsh
+docker exec -it srcs-wordpress-1 wp --allow-root redis status
 ```
 
-Expected: `mysqld is alive`
-
-### Check the Redis cache is alive
-
-```bash
-docker compose exec redis redis-cli \
-    -a "$(cat srcs/secrets/redis_password.txt)" ping
-```
-
-Expected: `PONG`
-
-### Check WordPress users
-
-```bash
-docker compose exec wordpress \
-    wp user list --allow-root --path=/var/www/html
-```
-
-Should list exactly two users: the administrator and the subscriber.
-
-### Check Prometheus scrape targets
-
-```bash
-curl -s http://jaehylee.42.fr:9090/api/v1/targets \
-    | python3 -m json.tool | grep health
-```
-
-All targets should report `"health": "up"`.
+Expected status: `Connected`.
 
 ---
 
-## Using FTP
+## Troubleshooting
 
-Connect to `jaehylee.42.fr` on port `21` using the credentials from `srcs/secrets/ftp_user.txt` and `srcs/secrets/ftp_password.txt`.
-
-The FTP user is locked into the WordPress web root (`/var/www/html`) via a chroot jail — navigation above that directory is not possible. Files uploaded via FTP are immediately visible to WordPress.
-
-Passive mode ports `21100–21110` must be reachable from your FTP client. Use passive mode in your client settings.
-
-Example using `lftp`:
-
-```bash
-lftp -u "$(cat srcs/secrets/ftp_user.txt)","$(cat srcs/secrets/ftp_password.txt)" \
-     ftp://jaehylee.42.fr
-```
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Browser shows `ERR_NAME_NOT_RESOLVED` | `jaehylee.42.fr` not resolving on the client | Use one of the DNS options in §3 |
+| `unhealthy` on `wordpress` | MariaDB not up yet; first start can take ~40 s | Wait; it will self-heal |
+| `unhealthy` on `monitoring` | Docker daemon metrics endpoint not enabled | Confirm `/etc/docker/daemon.json` has `metrics-addr` set and Docker has been restarted |
+| FTP client hangs after login | Client not in passive mode, or passive range blocked | Enable passive mode; ensure ports 21100–21110 are forwarded |
+| Grafana dashboards empty | Prometheus has no scrape target yet, or scrape interval hasn't elapsed | Wait ~30 s; then check Prometheus targets at `http://localhost:9090/targets` |

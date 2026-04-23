@@ -1,512 +1,372 @@
-# Developer Documentation — Inception
+# Developer Documentation
 
-## Prerequisites
-
-Make sure the following are installed before proceeding:
-
-| Tool | Minimum version | Check |
-|---|---|---|
-| Docker Engine | 24.0 | `docker --version` |
-| Docker Compose plugin | 2.20 | `docker compose version` |
-| make | any | `make --version` |
-| git | any | `git --version` |
-
-Docker must be running (`sudo systemctl start docker` on Linux).
+This document is for developers who need to set up, extend, or modify the Inception stack from source. For operational guidance (starting/stopping, credentials, health), see `USER_DOC.md`.
 
 ---
 
-## Setting Up the Environment from Scratch
+## 1. Setting up the environment from scratch
 
-### 1. Clone the repository
+### 1.1 Host prerequisites
 
-```bash
-git clone https://github.com/DavidLee18/42_inception.git
-cd 42_inception
-```
+The project targets two supported host environments. Pick one.
 
-### 2. Enable Docker daemon metrics on the host
+**Recommended: Vagrant + VirtualBox (matches the evaluation workflow)**
 
-The `monitoring` container scrapes per-container metrics from the Docker daemon's built-in Prometheus endpoint. This must be enabled on the host before starting the stack.
+- [VirtualBox](https://www.virtualbox.org/) ≥ 7.0
+- [Vagrant](https://www.vagrantup.com/) ≥ 2.4
+- GNU `make`
+- `git`
 
-Add or merge the following into `/etc/docker/daemon.json`:
+**Alternative: direct on any Linux host with Docker already installed**
 
-```json
-{
-  "metrics-addr": "0.0.0.0:9323",
-  "experimental": true
-}
-```
+- Docker Engine ≥ 24
+- Docker Compose plugin (`docker compose version` should print ≥ 2.29)
+- GNU `make`
+- `git`
 
-Then restart Docker:
-
-```bash
-sudo systemctl restart docker
-```
-
-Verify it works:
-
-```bash
-curl -s http://localhost:9323/metrics | head -5
-```
-
-### 3. Create `srcs/.env`
-
-All non-sensitive configuration lives here. Docker Compose automatically reads it because it is co-located with `docker-compose.yml`.
-
-```bash
-cat > srcs/.env <<'EOF'
-DOMAIN_NAME=jaehylee.42.fr
-WORDPRESS_DB_HOST=mariadb:3306
-DB_HOST=mariadb
-DB_PORT=3306
-REDIS_HOST=redis
-REDIS_PORT=6379
-DOCKER_METRICS_HOST=host-gateway:9323
-EOF
-```
-
-| Variable | Used by | Purpose |
-|---|---|---|
-| `DOMAIN_NAME` | `ftp` entrypoint, `wordpress` entrypoint | Sets `pasv_address` in vsftpd, `WP_HOME`/`WP_SITEURL` in wp-config |
-| `WORDPRESS_DB_HOST` | `wordpress` container | DB host passed as environment variable |
-| `DB_HOST` / `DB_PORT` | `wordpress` entrypoint | Health-check `nc -z` before WP install |
-| `REDIS_HOST` / `REDIS_PORT` | `wordpress` entrypoint | Written into wp-config.php |
-| `DOCKER_METRICS_HOST` | `monitoring` entrypoint | Substituted into `prometheus.yml` at startup |
-
-### 4. Create the secrets
-
-The stack requires thirteen secret files. Create them manually — never commit them to Git.
-
-```bash
-mkdir -p srcs/secrets
-echo "strongrootpassword"   > srcs/secrets/db_root_password.txt
-echo "wordpress"            > srcs/secrets/db_name.txt
-echo "wpuser"               > srcs/secrets/db_user.txt
-echo "strongwppassword"     > srcs/secrets/db_password.txt
-echo "strongredispassword"  > srcs/secrets/redis_password.txt
-echo "jaehylee"             > srcs/secrets/wp_admin_user.txt
-echo "strongadminpassword"  > srcs/secrets/wp_admin_password.txt
-echo "jaehylee@42seoul.kr"  > srcs/secrets/wp_admin_email.txt
-echo "subscriber1"          > srcs/secrets/wp_user.txt
-echo "stronguserpassword"   > srcs/secrets/wp_user_password.txt
-echo "user@42seoul.kr"      > srcs/secrets/wp_user_email.txt
-echo "ftpuser"              > srcs/secrets/ftp_user.txt
-echo "strongftppassword"    > srcs/secrets/ftp_password.txt
-```
-
-> **Constraint:** the WordPress admin username must not contain `admin` (case-insensitive). The `wordpress/entrypoint.sh` enforces this at startup and exits with an error if violated.
-
-Verify `srcs/secrets/` is gitignored:
-
-```bash
-grep srcs/secrets .gitignore   # must return "srcs/secrets/"
-```
-
-### 5. Add the domain to your hosts file
-
-```bash
-echo "127.0.0.1  jaehylee.42.fr" | sudo tee -a /etc/hosts
-```
-
-### 6. Verify configuration files are present
+### 1.2 Repository layout
 
 ```
 .
-├── Makefile
+├── Makefile                    # entry point — stack management + VM management
+├── Vagrantfile                 # VM definition (VirtualBox provider)
+├── README.md
+├── USER_DOC.md
+├── DEV_DOC.md
+├── ansible/
+│   └── playbook.yml            # idempotent VM provisioning (Docker + secrets + hosts)
 └── srcs/
-    ├── secrets/                     # 13 files as created above
-    ├── .env                         # non-sensitive config
-    ├── docker-compose.yml
+    ├── .env                    # non-sensitive config (committed)
+    ├── secrets/                # 13 credential files (gitignored, not present until provisioned)
+    ├── docker-compose.yml      # orchestrates 9 services over the `limbo` bridge network
     ├── nginx/
-    │   ├── Dockerfile
-    │   └── nginx.conf
-    ├── mariadb/
-    │   ├── Dockerfile
-    │   ├── my.cnf
-    │   └── entrypoint.sh
     ├── wordpress/
-    │   ├── Dockerfile
-    │   ├── php-fpm.conf
-    │   └── entrypoint.sh
+    ├── mariadb/
     ├── redis/
-    │   ├── Dockerfile
-    │   ├── redis.conf
-    │   └── entrypoint.sh
     ├── ftp/
-    │   ├── Dockerfile
-    │   ├── vsftpd.conf
-    │   └── entrypoint.sh
     ├── static/
-    │   ├── Dockerfile
-    │   ├── nginx.conf
-    │   ├── template.bqn
-    │   └── site/
-    │       ├── template.html
-    │       ├── style.css
-    │       └── *.bar
     ├── adminer/
-    │   ├── Dockerfile
-    │   ├── nginx.conf
-    │   └── php-fpm.conf
     ├── monitoring/
-    │   ├── Dockerfile
-    │   ├── entrypoint.sh
-    │   ├── supervisord.conf
-    │   ├── prometheus.yml
-    │   └── grafana/
-    │       ├── provisioning/
-    │       │   ├── datasources/prometheus.yml
-    │       │   └── dashboards/dashboard.yml
-    │       └── dashboards/
-    │           ├── docker.json
-    │           └── prometheus.json
     └── cadvisor/
-        ├── Dockerfile
-        └── exporter.py
 ```
 
----
+### 1.3 Configuration files
 
-## Building and Launching the Project
+**`srcs/.env`** — non-sensitive configuration, loaded into `wordpress`, `nginx`, and `ftp` via Compose's `env_file:` directive. Paths are resolved relative to the Compose file, so this must live next to `docker-compose.yml`, not at the repo root.
 
-### Using the Makefile (recommended)
-
-```bash
-# Build all images and start all containers
-make
-
-# Stop all containers (data preserved)
-make down
-
-# Stop all containers and delete all volumes and images
-make fclean
-
-# Full rebuild from scratch
-make re
-```
-
-### Using Docker Compose directly
-
-```bash
-# Build images and start in detached mode
-docker compose up -d --build
-
-# Start without rebuilding
-docker compose up -d
-
-# Stop containers
-docker compose down
-
-# Stop containers and destroy all volumes
-docker compose down -v
-
-# Rebuild and restart a single service
-docker compose build monitoring
-docker compose up -d --no-deps monitoring
-```
-
-### Makefile reference
-
-```makefile
-NAME = inception
-
-all: $(NAME)
-
-$(NAME):
-	mkdir -p /home/jaehylee/data/db /home/jaehylee/data/wp
-	docker compose -f srcs/docker-compose.yml build --no-cache
-	docker compose -f srcs/docker-compose.yml up -d
-
-down:
-	docker compose -f srcs/docker-compose.yml down
-
-fclean: down
-	docker compose -f srcs/docker-compose.yml down --volumes --rmi all --remove-orphans
-	docker image prune -af
-
-re: fclean all
-
-.PHONY: all down fclean re
-```
-
----
-
-## Architecture
-
-### Network
-
-All nine containers share the single `limbo` bridge network:
-
-```yaml
-networks:
-  limbo:
-```
-
-No `driver` is specified — Docker defaults to `bridge` on single-host deployments. Docker Compose names the network `inception_limbo` and provides automatic DNS resolution between all containers by service name.
-
-The `monitoring` container uses `extra_hosts: host-gateway` to reach the Docker daemon metrics endpoint (`host:9323`) on the host machine without switching to host network mode.
-
-Ports published to the host:
-
-| Port | Service | Protocol |
-|---|---|---|
-| 443 | nginx | HTTPS / TLS 1.3 |
-| 8080 | static | HTTP |
-| 8081 | adminer | HTTP (private ranges only) |
-| 21 | ftp | FTP control |
-| 21100–21110 | ftp | FTP passive data |
-| 3000 | monitoring | Grafana UI |
-| 9090 | monitoring | Prometheus UI |
-
-MariaDB (3306) and Redis (6379) are intentionally not published — they are reachable only within `limbo`.
-
-### Volume Map
-
-| Volume | Mounted at | Service(s) | Contents |
-|---|---|---|---|
-| `db_data` | `/var/lib/mariadb` | mariadb | MariaDB data directory |
-| `wp_data` | `/var/www/html` | wordpress (rw), nginx (ro), ftp (rw) | WordPress web root |
-| `redis_data` | `/data` | redis | `dump.rdb` RDB snapshot |
-| `prometheus_data` | `/var/lib/prometheus` | monitoring | TSDB, 15-day retention |
-| `grafana_data` | `/var/lib/grafana` | monitoring | User accounts, manual dashboards, alert rules |
-
-### Persistence Behaviour
-
-| Action | `db_data` | `wp_data` | `redis_data` | `prometheus_data` | `grafana_data` |
-|---|---|---|---|---|---|
-| `make down` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `make fclean` | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `docker compose build` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Container crash / restart | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Host reboot | ✅ | ✅ | ✅ | ✅ | ✅ |
-
----
-
-## Environment Variables and Secrets
-
-### `.env` file (`srcs/.env`)
-
-Docker Compose automatically reads `srcs/.env` because it is co-located with `docker-compose.yml`. Variables defined here are interpolated into `docker-compose.yml` at runtime using `${VARIABLE}` syntax.
+Current keys:
 
 ```
 DOMAIN_NAME=jaehylee.42.fr
-WORDPRESS_DB_HOST=mariadb:3306
 DB_HOST=mariadb
 DB_PORT=3306
 REDIS_HOST=redis
 REDIS_PORT=6379
-DOCKER_METRICS_HOST=host-gateway:9323
+WP_HOST=wordpress
+WP_FPM_PORT=9000
+WP_TITLE=Inception
 ```
 
-Config files that do not natively support environment variables (`vsftpd.conf`, `prometheus.yml`) are patched at container startup by their respective entrypoint scripts using `sed`.
+**`srcs/secrets/`** — thirteen plain-text files holding credentials. Required for the stack to start. Every file in this directory is wired as a Docker Secret in `docker-compose.yml`. See `USER_DOC.md` §4 for the full file list.
 
-### Docker Secrets
+### 1.4 First-time setup
 
-Credentials are never passed as plain environment variable values. Each secret is a file mounted at `/run/secrets/<name>` inside the container. Entrypoint scripts read them with a `read_secret()` helper:
+**Using Vagrant (automated):**
 
-```sh
-read_secret() {
-    cat "$1"
-}
+```zsh
+git clone https://github.com/DavidLee18/42_inception.git
+cd 42_inception
+make vm          # vagrant up — runs ansible_local, writes default secrets
+make vm-ssh      # enter the VM
+cd /vagrant && make
 ```
 
-The 13 secrets in use:
+Ansible performs the following on first `vagrant up`:
 
-| Secret file | Consumer |
+1. Installs Docker Engine (`5:27.3.1-1~debian.12~bookworm`) and the Compose plugin.
+2. Writes `/etc/docker/daemon.json` to enable the Prometheus metrics endpoint on `0.0.0.0:9323`.
+3. Creates bind-mount directories `/home/jaehylee/data/db` and `/home/jaehylee/data/wp`, owned by the `vagrant` user.
+4. Registers `127.0.0.1 jaehylee.42.fr` in the VM's `/etc/hosts`.
+5. Writes default secrets to `srcs/secrets/*.txt` with `force: no` (idempotent — your edits survive re-provisioning).
+
+**Manual setup on an existing host:**
+
+```zsh
+# 1. Enable Docker daemon metrics
+sudo tee /etc/docker/daemon.json <<'EOF'
+{ "metrics-addr": "0.0.0.0:9323", "experimental": true }
+EOF
+sudo systemctl restart docker
+
+# 2. Create bind-mount directories (the subject requires /home/login/data)
+sudo mkdir -p /home/jaehylee/data/{db,wp}
+sudo chown -R "$USER:$USER" /home/jaehylee/data
+
+# 3. Create secrets (defaults shown; edit to taste)
+mkdir -p srcs/secrets && chmod 700 srcs/secrets
+cat > srcs/secrets/db_root_password.txt  <<< 'changeme_dbroot'
+cat > srcs/secrets/db_name.txt           <<< 'wordpress'
+cat > srcs/secrets/db_user.txt           <<< 'wpuser'
+cat > srcs/secrets/db_password.txt       <<< 'changeme_dbpass'
+cat > srcs/secrets/redis_password.txt    <<< 'changeme_redis'
+cat > srcs/secrets/wp_admin_user.txt     <<< 'jaehylee'      # must NOT contain "admin"
+cat > srcs/secrets/wp_admin_password.txt <<< 'changeme_admin'
+cat > srcs/secrets/wp_admin_email.txt    <<< 'jaehylee@42seoul.kr'
+cat > srcs/secrets/wp_user.txt           <<< 'subscriber1'
+cat > srcs/secrets/wp_user_password.txt  <<< 'changeme_user'
+cat > srcs/secrets/wp_user_email.txt     <<< 'user@42seoul.kr'
+cat > srcs/secrets/ftp_user.txt          <<< 'ftpuser'       # must NOT be "root"
+cat > srcs/secrets/ftp_password.txt      <<< 'changeme_ftp'
+chmod 600 srcs/secrets/*.txt
+
+# 4. Add domain to /etc/hosts
+echo '127.0.0.1 jaehylee.42.fr' | sudo tee -a /etc/hosts
+
+# 5. Build and launch
+make
+```
+
+### 1.5 Validation constraints
+
+Several runtime checks fail-fast at container start. Violate them and the affected service will refuse to come up:
+
+| Check | Enforced by | Failure mode |
+|---|---|---|
+| `wp_admin_user` must not contain `admin` in any casing | `srcs/wordpress/entrypoint.sh` (`grep -qi 'admin'`) | Container exits with error message |
+| `ftp_user` must not be `root` | `srcs/ftp/entrypoint.sh` | Container exits with error message |
+| Every `.env` variable consumed by a service must be set | `: "${VAR:?...}"` guards in every entrypoint | Container exits with `VAR: parameter null or not set` |
+| Every required secret file must exist | `read_secret()` helper in every entrypoint | Container exits with `ERROR: secret file not found: /run/secrets/<name>` |
+
+---
+
+## 2. Building and launching
+
+### 2.1 Makefile targets
+
+The Makefile has two logical groups: stack management (run **inside the VM**) and VM management (run **on the host**).
+
+**Stack management (inside the VM):**
+
+| Target | What it does |
 |---|---|
-| `db_root_password.txt` | mariadb |
-| `db_name.txt` | mariadb, wordpress |
-| `db_user.txt` | mariadb, wordpress |
-| `db_password.txt` | mariadb, wordpress |
-| `redis_password.txt` | redis, wordpress |
-| `wp_admin_user.txt` | wordpress |
-| `wp_admin_password.txt` | wordpress |
-| `wp_admin_email.txt` | wordpress |
-| `wp_user.txt` | wordpress |
-| `wp_user_password.txt` | wordpress |
-| `wp_user_email.txt` | wordpress |
-| `ftp_user.txt` | ftp |
-| `ftp_password.txt` | ftp |
+| `make` / `make all` | Creates bind-mount directories, builds all images from scratch, starts the stack detached |
+| `make down` | Stops all containers (preserves volumes, images, and bind-mounted data) |
+| `make fclean` | Stops containers, removes all volumes and images, clears everything except bind-mounted data |
+| `make re` | `fclean` then `all` — full rebuild |
+
+**VM management (on the host):**
+
+| Target | What it does |
+|---|---|
+| `make vm` | `vagrant up` — provisions the VM if not already running |
+| `make vm-ssh` | SSH into the VM |
+| `make vm-sync` | Snapshot-copies the repo tree into `/home/vagrant/inception` inside the VM (alternative to the live `/vagrant` synced folder) |
+| `make vm-destroy` | `vagrant destroy -f` — removes the VM entirely |
+
+### 2.2 Under the hood
+
+`make` expands to:
+
+```zsh
+mkdir -p /home/jaehylee/data/db /home/jaehylee/data/wp
+docker compose -f srcs/docker-compose.yml build --no-cache
+docker compose -f srcs/docker-compose.yml up -d
+```
+
+`--no-cache` guarantees a fresh build — important because several images install system packages, and subtle apk cache differences can mask build-order bugs.
+
+### 2.3 Service start-up ordering
+
+`depends_on` with `condition: service_healthy` enforces:
+
+- `wordpress` waits for `mariadb` AND `redis` to report healthy.
+- `nginx` waits for `wordpress` to report healthy.
+- `adminer` waits for `mariadb` to report healthy.
+- `monitoring` waits for `cadvisor` to report healthy.
+
+This eliminates race conditions at first start. Typical cold-start time on a 2-vCPU / 4 GB VM: ~60 seconds until all nine services are `healthy`.
 
 ---
 
-## Service Details
+## 3. Managing containers and volumes
 
-### nginx
+### 3.1 Everyday container operations
 
-- Listens on 80 (redirect to 443) and 443 (TLS 1.3 only)
-- Proxies PHP requests to `wordpress:9000` via FastCGI
-- Serves static WordPress assets directly from the `wp_data` volume (read-only mount)
-- Self-signed certificate generated at build time with CN=`jaehylee.42.fr`
-- HSTS header with `max-age=63072000` (2 years) enforced on all responses
+```zsh
+# list all services with status
+docker compose -f srcs/docker-compose.yml ps
 
-### wordpress
+# follow aggregated logs
+docker compose -f srcs/docker-compose.yml logs -f
 
-- PHP-FPM 8.3 listening on `0.0.0.0:9000`
-- WP-CLI used in entrypoint to install WordPress core, create two users, and enable the Redis object cache plugin — fully automated, no browser interaction required
-- `wp-config.php` written at first start using secrets and `.env` values
-- Admin username validated at startup — must not contain `admin` (case-insensitive)
+# follow a single service's logs
+docker compose -f srcs/docker-compose.yml logs -f wordpress
 
-### mariadb
+# exec into a running container
+docker compose -f srcs/docker-compose.yml exec wordpress sh
+docker compose -f srcs/docker-compose.yml exec mariadb sh
 
-- Custom Alpine 3.22.4 build (not official image)
-- Initialised with `mariadb-install-db` on first start
-- Binds to `0.0.0.0` within `limbo` (not exposed to host)
+# restart one service
+docker compose -f srcs/docker-compose.yml restart nginx
 
-### redis
-
-- Object cache for WordPress using the `redis-cache` plugin
-- `allkeys-lru` eviction policy with `maxmemory 128mb` — ideal for a WordPress cache where keys carry no TTLs
-- RDB snapshot persistence to `redis_data` volume
-- Dangerous commands (`FLUSHALL`, `DEBUG`, `SHUTDOWN`) renamed to empty strings
-
-### ftp
-
-- vsftpd in passive mode on ports `21100–21110`
-- FTP user home directory is `/var/www/html` (WordPress web root)
-- Chroot jail enforced via `chroot_local_user=YES` — the user cannot navigate above the web root
-- `pasv_address` is substituted from `DOMAIN_NAME` at runtime by `entrypoint.sh`
-
-### static
-
-Two-stage build:
-
-1. **Builder stage** (Alpine 3.22.4 + clang + make + CBQN): compiles the CBQN interpreter and runs `template.bqn`, which reads `site/template.html` and the `site/*.bar` variable files to produce the final `index.html`.
-2. **Final stage** (Alpine 3.22.4 + nginx): contains only the compiled `index.html` and `style.css`.
-
-To update site content, edit files under `static/site/` and rebuild:
-
-```bash
-docker compose build static && docker compose up -d --no-deps static
+# rebuild one service without touching the others
+docker compose -f srcs/docker-compose.yml up -d --build --force-recreate nginx
 ```
 
-### adminer
+### 3.2 Volume inventory
 
-- Single-file PHP database UI served by nginx + php-fpm
-- Restricted to private IP ranges (10.x, 172.16–31.x, 192.168.x) via nginx `allow`/`deny`
+```zsh
+docker volume ls | grep inception
+```
 
-### monitoring
+Expect to see:
 
-- Single container running two processes managed by **supervisord** (PID 1):
-  - **Prometheus** — scrapes metrics every 15 seconds; targets substituted from `DOCKER_METRICS_HOST` at startup by `entrypoint.sh`
-  - **Grafana** — provisioned at startup with Prometheus as default datasource and two dashboards pre-loaded from JSON files
-
-Prometheus targets:
-
-| Job | Target | Metrics provided |
+| Volume | Type | Backing store |
 |---|---|---|
-| `docker` | `host-gateway:9323` | Per-container CPU, memory, network, block I/O |
-| `prometheus` | `localhost:9090` | Prometheus self-monitoring |
-| `cadvisor` | `cadvisor:8080` | Per-container resource metrics via custom exporter |
+| `inception_db_data` | bind | `/home/jaehylee/data/db` |
+| `inception_wp_data` | bind | `/home/jaehylee/data/wp` |
+| `inception_redis_data` | named | `/var/lib/docker/volumes/inception_redis_data/_data` |
+| `inception_prometheus_data` | named | `/var/lib/docker/volumes/inception_prometheus_data/_data` |
+| `inception_grafana_data` | named | `/var/lib/docker/volumes/inception_grafana_data/_data` |
 
-Grafana dashboards provisioned automatically:
+### 3.3 Inspecting a volume
 
-| Dashboard | Source file | Content |
+```zsh
+docker volume inspect inception_db_data
+```
+
+For bind mounts, the `Mountpoint` and `Options.device` fields point at the host path. For named volumes, `Mountpoint` is under the Docker state directory.
+
+### 3.4 Modifying a service
+
+Typical edit cycle:
+
+1. Edit the service's Dockerfile, `entrypoint.sh`, or config file under `srcs/<service>/`.
+2. If you changed `srcs/.env`, note that `env_file:` is applied at container start — containers pick up the change on restart without rebuild.
+3. For Dockerfile / entrypoint changes, rebuild just that service:
+   ```zsh
+   docker compose -f srcs/docker-compose.yml up -d --build --force-recreate <service>
+   ```
+4. Verify with `docker compose -f srcs/docker-compose.yml logs -f <service>`.
+
+### 3.5 Rendering the final compose configuration
+
+To see the fully-resolved config (with `env_file:` merged in, secrets expanded, etc.):
+
+```zsh
+docker compose -f srcs/docker-compose.yml config
+```
+
+Useful for debugging why an env var isn't reaching a container.
+
+---
+
+## 4. Data storage and persistence
+
+### 4.1 Where each service's data lives
+
+| Service | Mount path inside container | Host location | Persistence behaviour |
+|---|---|---|---|
+| `mariadb` | `/var/lib/mariadb` | `/home/jaehylee/data/db` (bind mount) | Survives `make down` and `make fclean` |
+| `wordpress` | `/var/www/html` | `/home/jaehylee/data/wp` (bind mount) | Survives `make down` and `make fclean` |
+| `nginx` | `/var/www/html` (read-only) | same as `wordpress` | Shares the WordPress volume |
+| `ftp` | `/var/www/html` | same as `wordpress` | Shares the WordPress volume |
+| `redis` | `/data` | `inception_redis_data` (named volume) | Survives `make down`; erased by `make fclean` |
+| `monitoring` | `/var/lib/prometheus`, `/var/lib/grafana` | `inception_prometheus_data`, `inception_grafana_data` (named volumes) | Survives `make down`; erased by `make fclean` |
+| `static`, `adminer`, `cadvisor` | — | stateless | No persistence |
+
+### 4.2 Why bind mounts for `db_data` and `wp_data`
+
+The subject mandates *"Your volumes will be available in the `/home/login/data` folder of the host machine using Docker"*. Named Docker volumes live under `/var/lib/docker/volumes/` by default — the only way to satisfy the `/home/<login>/data` requirement is a bind mount. The Compose stanza used:
+
+```yaml
+volumes:
+  db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/jaehylee/data/db
+```
+
+This keeps the top-level `volumes:` syntax idiomatic while forcing the backing store onto a specific host path.
+
+### 4.3 Why named volumes for the rest
+
+`redis_data`, `prometheus_data`, and `grafana_data` don't need host-side visibility — they exist only to let restarts preserve cache state, scrape history, and dashboard edits. Named volumes offer better portability, better Docker integration (`docker volume` tooling works cleanly), and don't clutter `/home/jaehylee/`.
+
+### 4.4 First-run vs subsequent runs
+
+Every entrypoint uses an initialisation guard so that expensive one-time work only happens once per data volume:
+
+| Service | Guard | What runs on first start only |
 |---|---|---|
-| Docker Containers | `grafana/dashboards/docker.json` | Container resource usage |
-| Prometheus 2.0 Overview | `grafana/dashboards/prometheus.json` | Scrape health, TSDB stats |
+| `mariadb` | `/var/lib/mariadb/.init_complete` | `mariadb-install-db`, user/DB creation, root password set |
+| `wordpress` | existence of `/var/www/html/wp-config.php` AND `wp core is-installed` check | `wp-config.php` generation, `wp core install`, user creation, Redis plugin install |
+| `ftp` | `id "$FTP_USER"` check | User creation, `chpasswd` |
+| `nginx` | existence of `/etc/nginx/ssl/server.crt` | `openssl req` self-signed cert generation |
 
-### cadvisor
+This means that after `make fclean` (which removes the named volumes but **leaves bind-mounted data intact**), `mariadb` and `wordpress` will detect the existing data and skip re-initialisation.
 
-- Python 3 custom metrics exporter that collects per-container resource usage by querying the Docker Engine API via `/var/run/docker.sock` (mounted read-only)
-- Exposes metrics in Prometheus text format on port `8080` at the `/metrics` endpoint
-- Collects per-container CPU, memory, network I/O, and block I/O; refreshes every 5 seconds
-- Scraped by Prometheus via the `cadvisor` job targeting `cadvisor:8080`
-- Has no published host ports — accessible only within `limbo`
+### 4.5 Total reset
+
+```zsh
+# inside the VM
+make fclean
+sudo rm -rf /home/jaehylee/data/{db,wp}
+sudo mkdir -p /home/jaehylee/data/{db,wp}
+make
+```
+
+Or, from the host, simply `make vm-destroy && make vm && make vm-ssh && cd /vagrant && make`.
+
+### 4.6 Backup
+
+The state a real-world operator would back up:
+
+- `/home/jaehylee/data/db` — MariaDB (SQL data files)
+- `/home/jaehylee/data/wp` — WordPress (uploads, plugins, themes, `wp-config.php`)
+- `/var/lib/docker/volumes/inception_grafana_data` — Grafana (dashboard edits, saved users)
+
+The rest (Redis cache, Prometheus TSDB, cAdvisor state, static site) is fully reproducible from source and does not need backing up.
 
 ---
 
-## TLS Certificate
+## 5. Extending the stack
 
-The nginx image generates a self-signed certificate at build time:
+### 5.1 Adding a new service
 
-```
-/etc/nginx/ssl/server.crt
-/etc/nginx/ssl/server.key
-```
+1. Create `srcs/<new-service>/` with a `Dockerfile` (and optionally `entrypoint.sh`, config files).
+2. Add a service stanza to `srcs/docker-compose.yml`. Template:
+   ```yaml
+   <new-service>:
+     image: <new-service>:alpine3.22.4
+     build:
+       context: ./<new-service>
+     restart: unless-stopped
+     networks: [limbo]
+     healthcheck: { ... }
+   ```
+3. If the service consumes non-sensitive config, add `env_file: - .env`.
+4. If it consumes credentials, declare a new secret at the top of `docker-compose.yml` and reference it under `secrets:` in the service.
+5. If it is externally reachable, add a port mapping **and** a matching forward in `Vagrantfile`.
+6. Rebuild: `make re`.
 
-The CN is set to `jaehylee.42.fr`. For production, mount real certificates via a volume and update `nginx.conf` to point to them.
+### 5.2 Changing the domain
 
----
+1. Edit `DOMAIN_NAME` in `srcs/.env`.
+2. Update `/etc/hosts` inside the VM (and on the cluster PC).
+3. Run `make re` to regenerate the self-signed TLS certificate with the new CN — the nginx entrypoint only regenerates the cert when `/etc/nginx/ssl/server.crt` is absent, which happens naturally after `make fclean`.
 
-## Useful Commands
+### 5.3 Testing changes quickly
 
-### Container management
+For iterative development, the live `/vagrant` mount inside the VM means edits on the host filesystem are immediately visible to `make` inside the VM. A typical loop:
 
-```bash
-# Check status of all containers
-docker compose ps
-
-# Follow logs for a specific service
-docker compose logs -f <service>
-
-# Restart a single service without rebuilding
-docker compose restart <service>
-
-# Rebuild and restart a single service
-docker compose build <service> && docker compose up -d --no-deps <service>
-
-# Open a shell inside a container
-docker compose exec <service> sh
-```
-
-### WordPress
-
-```bash
-# List WordPress users
-docker compose exec wordpress wp user list --allow-root --path=/var/www/html
-
-# Check Redis object cache status
-docker compose exec wordpress wp redis status --allow-root --path=/var/www/html
-
-# Flush the Redis cache
-docker compose exec wordpress wp redis flush --allow-root --path=/var/www/html
+```zsh
+# on the host: edit any file under srcs/
+# then, inside the VM:
+docker compose -f srcs/docker-compose.yml up -d --build --force-recreate <service>
+docker compose -f srcs/docker-compose.yml logs -f <service>
 ```
 
-### MariaDB
-
-```bash
-# Check database is alive
-docker compose exec mariadb mysqladmin \
-    --socket=/run/mariadbd/mariadbd.sock ping
-
-# Open MariaDB CLI as root
-docker compose exec mariadb mariadb \
-    --socket=/run/mariadbd/mariadbd.sock -u root
-```
-
-### Redis
-
-```bash
-# Ping Redis
-docker compose exec redis redis-cli \
-    -a "$(cat srcs/secrets/redis_password.txt)" ping
-
-# Check memory usage
-docker compose exec redis redis-cli \
-    -a "$(cat srcs/secrets/redis_password.txt)" info memory
-```
-
-### Prometheus
-
-```bash
-# Verify scrape targets are healthy
-curl -s http://jaehylee.42.fr:9090/api/v1/targets \
-    | python3 -m json.tool | grep health
-```
-
-### Volumes
-
-```bash
-# List all named volumes
-docker volume ls
-
-# Inspect a volume
-docker volume inspect inception_wp_data
-
-# Back up the MariaDB volume
-docker run --rm \
-    -v inception_db_data:/data \
-    -v $(pwd):/backup \
-    alpine tar czf /backup/db_data_backup.tar.gz /data
-```
+No `make re` needed unless multiple services are affected.
