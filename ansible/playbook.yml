@@ -133,7 +133,7 @@
       copy:
         dest: "{{ project_dir }}/srcs/secrets/{{ item.name }}"
         content: "{{ item.value }}\n"
-        force: no
+        force: yes
         mode: "0600"
       loop:
         - { name: db_root_password.txt,  value: changeme_dbroot  }
