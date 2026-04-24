@@ -24,7 +24,7 @@ fi
 
 # ── Render vsftpd.conf from template on every start ─────────────────────────
 cp /etc/vsftpd/vsftpd.conf.template /etc/vsftpd/vsftpd.conf
-sed -i -e "s|__DOMAIN_NAME__|${DOMAIN_NAME}|g" /etc/vsftpd/vsftpd.conf
+# sed -i -e "s|__DOMAIN_NAME__|${DOMAIN_NAME}|g" /etc/vsftpd/vsftpd.conf
 
 # Create the FTP user if it does not exist
 if ! id "$FTP_USER" > /dev/null 2>&1; then

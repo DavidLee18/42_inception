@@ -18,7 +18,7 @@ read_secret() {
 : "${REDIS_PORT:?REDIS_PORT must be set (from .env)}"
 : "${WP_TITLE:=Inception}"
 
-SITE_URL="https://${DOMAIN_NAME}"
+SITE_URL="https://${DOMAIN_NAME}:8443"
 
 # ── Read all secrets ────────────────────────────────────────────────────────
 DB_NAME=$(read_secret /run/secrets/db_name)
